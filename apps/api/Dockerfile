@@ -30,8 +30,10 @@ COPY --from=pruner /app/out/full/ .
 RUN pnpm --filter @leilao-erp/types build
 RUN pnpm --filter @leilao-erp/api exec prisma generate
 RUN pnpm turbo run build --filter=@leilao-erp/api
-# Remove devDependencies (mantém só o necessário para `node dist/main.js`).
-RUN pnpm prune --prod
+# (Sem "pnpm prune --prod" aqui: em builds com o node_modules simlinkado do
+# pnpm dentro de um monorepo podado pelo turbo, o prune removia pacotes
+# realmente usados em runtime — ex.: "Cannot find module 'reflect-metadata'".
+# A imagem final fica um pouco maior, mas correta.)
 
 # ---- Imagem final, roda como usuário não-root ----
 FROM node:22-alpine AS runner
