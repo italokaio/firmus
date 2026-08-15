@@ -11,6 +11,8 @@
 
 FROM node:22-alpine AS base
 RUN corepack enable
+# Evita prompts interativos do pnpm em builds não-interativos como o do Railway/CI.
+ENV CI=true
 
 # ---- Poda: gera um subconjunto do monorepo só com o que o web precisa ----
 FROM base AS pruner
