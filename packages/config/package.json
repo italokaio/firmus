@@ -1,0 +1,13 @@
+{
+  "name": "@leilao-erp/config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "files": [
+    "base.json",
+    "nest.json",
+    "nextjs.json",
+    "eslint-base.js",
+    "tailwind-preset.js"
+  ]
+}

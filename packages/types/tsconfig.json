@@ -1,0 +1,10 @@
+{
+  "extends": "@leilao-erp/config/base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true
+  },
+  "include": ["src"]
+}

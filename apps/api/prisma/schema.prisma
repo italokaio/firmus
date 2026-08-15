@@ -1,0 +1,1040 @@
+// Schema Prisma
+// Fase 0: tenancy (Company), usuários, RBAC granular, refresh tokens, auditoria.
+// Fase 1: Prospecção de imóveis (Property, fotos, documentos, tags).
+// Fase 2: Due Diligence (checklist com responsável/prazo/status/comentários/
+// arquivos) e Aquisição (custos e cálculo automático de capital investido).
+// Fase 3: Jurídico (status do processo, prazos/audiências, documentos) e
+// Reforma (kanban de obra com checklist, mídia, comentários e dependências).
+// Fase 4: Financeiro (hierarquia de contas de caixa geral/empresa/SPE/imóvel,
+// categorias, transações previstas x realizadas, DRE e fluxo de caixa por imóvel).
+// Fase 5: Simulador (cenários Otimista/Realista/Pessimista por imóvel — ROI,
+// margem, payback, TIR e VPL calculados na camada de aplicação).
+// Fase 6: Investidores (cadastro, participação percentual e aporte por imóvel,
+// distribuição de lucro com IR estimado — somente lado administrativo, sem
+// portal de login próprio do investidor ainda).
+// Fase 7: Vendas (corretor/comissão, pipeline proposta → contrato →
+// financiamento → recebíveis; ao concluir, marca o imóvel como VENDIDA).
+// Fase 8: Relatórios (PDF/Excel gerados sob demanda a partir dos dados ao
+// vivo dos módulos existentes — nenhum dado é duplicado, só o arquivo final).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Empresa (tenant). Todo dado sensível do sistema pendura em um Company.
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  document  String   @unique /// CNPJ
+  slug      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  roles         Role[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  properties        Property[]
+  tags              Tag[]
+  financeAccounts   FinanceAccount[]
+  financeCategories FinanceCategory[]
+  investors         Investor[]
+  brokers           Broker[]
+  reports           Report[]
+
+  @@map("companies")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  companyId    String
+  name         String
+  email        String
+  passwordHash String
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  /// Segredo TOTP confirmado — só existe quando o 2FA está de fato ativo.
+  twoFactorSecret String?
+  twoFactorEnabled Boolean @default(false)
+  /// Segredo gerado pelo passo de setup, ainda não confirmado com um código válido.
+  twoFactorTempSecret String?
+
+  /// Vínculo opcional a um Investor — quando presente, o acesso desse usuário
+  /// aos módulos de Investidores/Imóveis é restrito à própria participação
+  /// (ver escopo por linha em InvestorsService/PropertiesService).
+  investorId String? @unique
+  /// Vínculo opcional a um Broker — quando presente, o acesso aos Imóveis/
+  /// Vendas é restrito aos imóveis atribuídos/cadastrados por este usuário.
+  brokerId   String? @unique
+
+  company                Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  investor               Investor?             @relation(fields: [investorId], references: [id], onDelete: SetNull)
+  broker                 Broker?               @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  roles                  UserRole[]
+  refreshTokens          RefreshToken[]
+  auditLogs              AuditLog[]
+  dueDiligenceItemsOwned DueDiligenceItem[]
+  dueDiligenceComments   DueDiligenceComment[]
+  renovationTasksOwned   RenovationTask[]
+  renovationComments     RenovationComment[]
+  transactionsCreated    Transaction[]
+  reportsGenerated       Report[]
+  propertiesCreated      Property[]            @relation("PropertyCreatedBy")
+
+  @@unique([companyId, email])
+  @@index([companyId])
+  @@map("users")
+}
+
+/// Papel configurável por empresa (Administrador, Sócio, Diretor, ...).
+model Role {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  description String?
+  isSystem    Boolean  @default(false) /// papéis-base do seed não podem ser excluídos
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("roles")
+}
+
+enum AuctionType {
+  JUDICIAL
+  EXTRAJUDICIAL
+}
+
+/// Como o imóvel entrou na carteira da empresa — define quais campos/etapas
+/// de leilão (tipoLeilao, valorMinimo, valorMaximoOferta, due diligence,
+/// aquisição, jurídico) se aplicam. Ver PropertiesService/SalesService.
+enum OperationType {
+  LEILAO
+  VENDA_DIRETA
+  GESTAO_TERCEIROS
+}
+
+enum OccupancyStatus {
+  OCUPADO
+  DESOCUPADO
+  NAO_INFORMADO
+}
+
+enum LegalRiskLevel {
+  BAIXO
+  MEDIO
+  ALTO
+}
+
+enum Priority {
+  BAIXA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
+/// Funil de decisão da prospecção. Os estados do ciclo de vida completo
+/// (jurídico, reforma, venda...) chegam nas Fases 2+ conforme o roadmap.
+enum ProspectStatus {
+  NOVA_OPORTUNIDADE
+  EM_ANALISE
+  APROVADA
+  REPROVADA
+  EM_DUE_DILIGENCE
+  ADQUIRIDA
+  VENDIDA
+  DESCARTADA
+}
+
+/// Oportunidade de imóvel de leilão — agregado central do sistema.
+model Property {
+  id        String   @id @default(uuid())
+  companyId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tipoOperacao OperationType @default(LEILAO)
+
+  // Origem e edital (aplicável quando tipoOperacao = LEILAO)
+  origem     String
+  tipoLeilao AuctionType?
+  editalUrl  String?
+
+  // Proprietário (aplicável quando tipoOperacao = VENDA_DIRETA ou GESTAO_TERCEIROS —
+  // imóvel não pertence à empresa, apenas intermediado/administrado)
+  proprietarioNome     String?
+  proprietarioContato  String?
+
+  // Localização e identificação
+  cidade    String
+  estado    String
+  endereco  String
+  matricula String?
+
+  // Características físicas
+  area        Decimal @db.Decimal(10, 2)
+  dormitorios Int?
+  banheiros   Int?
+  garagens    Int?
+
+  // Valores (valorMinimo/valorMaximoOferta só fazem sentido em leilão — lance)
+  valorAvaliacao       Decimal  @db.Decimal(14, 2)
+  valorMinimo          Decimal? @db.Decimal(14, 2)
+  valorMaximoOferta    Decimal? @db.Decimal(14, 2)
+  valorMercadoEstimado Decimal? @db.Decimal(14, 2)
+
+  // Situação e risco
+  ocupacao      OccupancyStatus @default(NAO_INFORMADO)
+  riscoJuridico LegalRiskLevel  @default(MEDIO)
+  observacoes   String?
+
+  status     ProspectStatus @default(NOVA_OPORTUNIDADE)
+  prioridade Priority       @default(MEDIA)
+
+  /// Quem cadastrou o imóvel — usado para escopar corretores ao próprio cadastro.
+  createdByUserId String?
+  /// Corretor responsável/atribuído — usado para escopar corretores ao próprio
+  /// imóvel. Preenchido manualmente ou automaticamente ao vincular um Broker
+  /// na Venda (ver SalesService).
+  corretorResponsavelId String?
+
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy            User?              @relation("PropertyCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  corretorResponsavel   Broker?            @relation("PropertyCorretorResponsavel", fields: [corretorResponsavelId], references: [id], onDelete: SetNull)
+  photos            PropertyPhoto[]
+  documents         PropertyDocument[]
+  tags              PropertyTag[]
+  dueDiligenceItems DueDiligenceItem[]
+  acquisition       Acquisition?
+  legalCase         LegalCase?
+  renovationTasks   RenovationTask[]
+  financeAccount    FinanceAccount?
+  simulatorScenarios SimulatorScenario[]
+  investors         PropertyInvestor[]
+  sale              Sale?
+  reports           Report[]
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([companyId, prioridade])
+  @@index([createdByUserId])
+  @@index([corretorResponsavelId])
+  @@map("properties")
+}
+
+model PropertyPhoto {
+  id         String   @id @default(uuid())
+  propertyId String
+  storageKey String
+  caption    String?
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@map("property_photos")
+}
+
+/// Documento versionado (edital, matrícula, laudo, etc.). Cada nova versão
+/// cria um registro novo apontando para o anterior via `previousVersionId`.
+model PropertyDocument {
+  id                String   @id @default(uuid())
+  propertyId        String
+  name              String
+  storageKey        String
+  mimeType          String
+  sizeBytes         Int
+  version           Int      @default(1)
+  previousVersionId String?  @unique
+  uploadedById      String?
+  createdAt         DateTime @default(now())
+
+  property        Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  previousVersion PropertyDocument? @relation("DocumentVersion", fields: [previousVersionId], references: [id])
+  nextVersion     PropertyDocument? @relation("DocumentVersion")
+
+  @@index([propertyId])
+  @@map("property_documents")
+}
+
+model Tag {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  color     String   @default("#6366F1")
+  createdAt DateTime @default(now())
+
+  company    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  properties PropertyTag[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("tags")
+}
+
+model PropertyTag {
+  propertyId String
+  tagId      String
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, tagId])
+  @@map("property_tags")
+}
+
+enum DueDiligenceItemType {
+  MATRICULA
+  IPTU
+  CONDOMINIO
+  ONUS
+  ACOES
+  DEBITOS
+  FOTOS
+  LAUDO
+  PARECER_JURIDICO
+  ANALISE_DOCUMENTAL
+  OUTRO
+}
+
+enum DueDiligenceStatus {
+  PENDENTE
+  EM_ANDAMENTO
+  CONCLUIDO
+  REPROVADO
+}
+
+/// Item do checklist de due diligence. Itens `critical = true` com status
+/// diferente de CONCLUIDO bloqueiam o registro da Aquisição (ver
+/// AcquisitionService.assertNoCriticalPendingItems).
+model DueDiligenceItem {
+  id            String               @id @default(uuid())
+  propertyId    String
+  type          DueDiligenceItemType
+  title         String
+  description   String?
+  critical      Boolean              @default(true)
+  status        DueDiligenceStatus   @default(PENDENTE)
+  responsibleId String?
+  dueDate       DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  property    Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  responsible User?                 @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
+  comments    DueDiligenceComment[]
+  files       DueDiligenceFile[]
+
+  @@index([propertyId])
+  @@map("due_diligence_items")
+}
+
+model DueDiligenceComment {
+  id        String   @id @default(uuid())
+  itemId    String
+  authorId  String?
+  body      String
+  createdAt DateTime @default(now())
+
+  item   DueDiligenceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  author User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([itemId])
+  @@map("due_diligence_comments")
+}
+
+model DueDiligenceFile {
+  id           String   @id @default(uuid())
+  itemId       String
+  name         String
+  storageKey   String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  item DueDiligenceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+  @@map("due_diligence_files")
+}
+
+enum PaymentMethod {
+  AVISTA
+  FINANCIADO
+  PARCELADO
+}
+
+/// Registro de aquisição — 1:1 com Property. Custo total e capital investido
+/// são calculados na camada de aplicação a partir destes campos (ver
+/// AcquisitionService), não armazenados, para nunca ficarem desatualizados.
+model Acquisition {
+  id                     String        @id @default(uuid())
+  propertyId             String        @unique
+  valorLance             Decimal       @db.Decimal(14, 2)
+  formaPagamento         PaymentMethod
+  custasCartorarias      Decimal       @default(0) @db.Decimal(14, 2)
+  itbi                   Decimal       @default(0) @db.Decimal(14, 2)
+  registro               Decimal       @default(0) @db.Decimal(14, 2)
+  escritura              Decimal       @default(0) @db.Decimal(14, 2)
+  honorariosAdvocaticios Decimal       @default(0) @db.Decimal(14, 2)
+  advogadoResponsavel    String?
+  taxas                  Decimal       @default(0) @db.Decimal(14, 2)
+  comissoes              Decimal       @default(0) @db.Decimal(14, 2)
+  custosBancarios        Decimal       @default(0) @db.Decimal(14, 2)
+  observacoes            String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("acquisitions")
+}
+
+enum LegalCaseStatus {
+  AGUARDANDO_PAGAMENTO
+  CARTA_ARREMATACAO
+  REGISTRO
+  IMISSAO_POSSE
+  NEGOCIACAO_AMIGAVEL
+  NOTIFICACAO
+  DESPEJO
+  ACAO_JUDICIAL
+  CUMPRIMENTO
+  DESOCUPADO
+  ARQUIVADO
+}
+
+enum LegalEventType {
+  PRAZO
+  AUDIENCIA
+}
+
+enum LegalEventStatus {
+  PENDENTE
+  CONCLUIDO
+}
+
+/// Processo jurídico do imóvel — 1:1 com Property. Acompanha o fluxo desde o
+/// pagamento do lance até a desocupação/arquivamento.
+model LegalCase {
+  id                  String          @id @default(uuid())
+  propertyId          String          @unique
+  status              LegalCaseStatus @default(AGUARDANDO_PAGAMENTO)
+  advogadoResponsavel String?
+  custasProcessuais   Decimal         @default(0) @db.Decimal(14, 2)
+  observacoes         String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  property  Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  events    LegalCaseEvent[]
+  documents LegalCaseDocument[]
+
+  @@map("legal_cases")
+}
+
+/// Prazo ou audiência do processo. `status` vira CONCLUIDO manualmente; a UI
+/// destaca eventos com `dueDate` vencido e `status = PENDENTE` como atrasados.
+model LegalCaseEvent {
+  id          String           @id @default(uuid())
+  legalCaseId String
+  type        LegalEventType
+  title       String
+  description String?
+  dueDate     DateTime
+  status      LegalEventStatus @default(PENDENTE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  legalCase LegalCase @relation(fields: [legalCaseId], references: [id], onDelete: Cascade)
+
+  @@index([legalCaseId])
+  @@map("legal_case_events")
+}
+
+model LegalCaseDocument {
+  id           String   @id @default(uuid())
+  legalCaseId  String
+  name         String
+  storageKey   String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  legalCase LegalCase @relation(fields: [legalCaseId], references: [id], onDelete: Cascade)
+
+  @@index([legalCaseId])
+  @@map("legal_case_documents")
+}
+
+enum RenovationStage {
+  PLANEJAMENTO
+  ORCAMENTO
+  COMPRAS
+  DEMOLICAO
+  ALVENARIA
+  ELETRICA
+  HIDRAULICA
+  PINTURA
+  ACABAMENTO
+  LIMPEZA
+  FOTOGRAFIA
+  FINALIZADO
+}
+
+enum RenovationMediaKind {
+  FOTO
+  VIDEO
+}
+
+/// Cartão do kanban de reforma. `order` controla a posição dentro da coluna
+/// (stage) para permitir reordenação por drag-and-drop.
+model RenovationTask {
+  id                  String          @id @default(uuid())
+  propertyId          String
+  stage               RenovationStage @default(PLANEJAMENTO)
+  order               Int             @default(0)
+  title               String
+  description         String?
+  responsibleId       String?
+  priority            Priority        @default(MEDIA)
+  startDate           DateTime?
+  dueDate             DateTime?
+  valorPrevisto       Decimal         @default(0) @db.Decimal(14, 2)
+  valorRealizado      Decimal         @default(0) @db.Decimal(14, 2)
+  percentualConcluido Int             @default(0)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  property    Property                   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  responsible User?                      @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
+  checklist   RenovationChecklistItem[]
+  comments    RenovationComment[]
+  media       RenovationMedia[]
+  dependsOn   RenovationTaskDependency[] @relation("DependentTask")
+  dependedBy  RenovationTaskDependency[] @relation("DependencyTask")
+
+  @@index([propertyId])
+  @@index([propertyId, stage])
+  @@map("renovation_tasks")
+}
+
+model RenovationChecklistItem {
+  id        String   @id @default(uuid())
+  taskId    String
+  title     String
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  task RenovationTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("renovation_checklist_items")
+}
+
+model RenovationComment {
+  id        String   @id @default(uuid())
+  taskId    String
+  authorId  String?
+  body      String
+  createdAt DateTime @default(now())
+
+  task   RenovationTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@map("renovation_comments")
+}
+
+model RenovationMedia {
+  id         String              @id @default(uuid())
+  taskId     String
+  kind       RenovationMediaKind
+  storageKey String
+  caption    String?
+  createdAt  DateTime            @default(now())
+
+  task RenovationTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("renovation_media")
+}
+
+/// Dependência entre cartões do mesmo imóvel (ex.: "Pintura" depende de
+/// "Alvenaria"). Informativa nesta fase — não bloqueia a movimentação do
+/// cartão no kanban, apenas é exibida na UI.
+model RenovationTaskDependency {
+  taskId          String
+  dependsOnTaskId String
+
+  task      RenovationTask @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn RenovationTask @relation("DependencyTask", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, dependsOnTaskId])
+  @@map("renovation_task_dependencies")
+}
+
+enum FinanceAccountLevel {
+  GERAL
+  EMPRESA
+  SPE
+  IMOVEL
+}
+
+/// Conta de caixa. Forma uma hierarquia (geral → empresa → SPE → imóvel) via
+/// `parentAccountId` — organizacional, não um rollup automático de saldo.
+/// A conta EMPRESA raiz é criada no provisionamento do tenant; a conta IMOVEL
+/// é criada automaticamente junto de cada Property (ver PropertiesService.create).
+model FinanceAccount {
+  id              String              @id @default(uuid())
+  companyId       String
+  propertyId      String?             @unique
+  parentAccountId String?
+  level           FinanceAccountLevel
+  name            String
+  saldoInicial    Decimal             @default(0) @db.Decimal(14, 2)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  company       Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  property      Property?        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  parentAccount FinanceAccount?  @relation("AccountHierarchy", fields: [parentAccountId], references: [id], onDelete: SetNull)
+  childAccounts FinanceAccount[] @relation("AccountHierarchy")
+  transactions  Transaction[]
+
+  @@index([companyId])
+  @@index([parentAccountId])
+  @@map("finance_accounts")
+}
+
+enum FinanceCategoryType {
+  RECEITA
+  DESPESA
+}
+
+model FinanceCategory {
+  id        String              @id @default(uuid())
+  companyId String
+  name      String
+  type      FinanceCategoryType
+  createdAt DateTime            @default(now())
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("finance_categories")
+}
+
+enum TransactionStatus {
+  PREVISTO
+  REALIZADO
+}
+
+/// Lançamento de entrada/saída em uma FinanceAccount. O tipo (receita/despesa)
+/// vem da FinanceCategory associada — nunca duplicado aqui, para não divergir.
+model Transaction {
+  id               String             @id @default(uuid())
+  financeAccountId String
+  categoryId       String
+  amount           Decimal            @db.Decimal(14, 2)
+  date             DateTime
+  description      String?
+  status           TransactionStatus  @default(PREVISTO)
+  conciliado       Boolean            @default(false)
+  conciliadoEm     DateTime?
+  createdById      String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  financeAccount FinanceAccount  @relation(fields: [financeAccountId], references: [id], onDelete: Cascade)
+  category       FinanceCategory @relation(fields: [categoryId], references: [id])
+  createdBy      User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([financeAccountId])
+  @@index([financeAccountId, status])
+  @@index([financeAccountId, date])
+  @@map("transactions")
+}
+
+enum SimulatorScenarioType {
+  OTIMISTA
+  REALISTA
+  PESSIMISTA
+}
+
+/// Cenário de simulação de investimento (um por tipo, no máximo 3 por imóvel).
+/// ROI, margem, payback, TIR e VPL são calculados na camada de aplicação a
+/// partir destes campos (ver SimulatorService), nunca armazenados.
+model SimulatorScenario {
+  id                 String                @id @default(uuid())
+  propertyId         String
+  tipo               SimulatorScenarioType
+  capitalInvestido   Decimal               @db.Decimal(14, 2)
+  valorVendaEstimado Decimal               @db.Decimal(14, 2)
+  custosVenda        Decimal               @default(0) @db.Decimal(14, 2)
+  prazoMeses         Int
+  taxaDescontoAnual  Decimal               @default(12) @db.Decimal(5, 2)
+  observacoes        String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, tipo])
+  @@index([propertyId])
+  @@map("simulator_scenarios")
+}
+
+/// Investidor da empresa (pessoa física/jurídica que aporta capital em
+/// imóveis). Sem login próprio nesta fase — gestão é toda pelo lado admin.
+model Investor {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  document    String /// CPF/CNPJ
+  email       String?
+  phone       String?
+  bankName    String?
+  bankAgency  String?
+  bankAccount String?
+  pixKey      String?
+  observacoes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  participations PropertyInvestor[]
+  userAccount    User?
+
+  @@unique([companyId, document])
+  @@index([companyId])
+  @@map("investors")
+}
+
+/// Participação de um investidor em um imóvel (percentual + aporte). Base
+/// para o cálculo de distribuição de lucro (ProfitDistribution).
+model PropertyInvestor {
+  id          String    @id @default(uuid())
+  propertyId  String
+  investorId  String
+  percentual  Decimal   @db.Decimal(5, 2)
+  valorAporte Decimal   @default(0) @db.Decimal(14, 2)
+  dataAporte  DateTime?
+  observacoes String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  property      Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  investor      Investor             @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  distributions ProfitDistribution[]
+
+  @@unique([propertyId, investorId])
+  @@index([propertyId])
+  @@index([investorId])
+  @@map("property_investors")
+}
+
+enum ProfitDistributionStatus {
+  PENDENTE
+  PAGO
+}
+
+/// Prestação de contas de um ciclo de distribuição de lucro para uma
+/// participação. `percentualAplicado` é um snapshot do percentual da
+/// participação no momento do cálculo — não recalcula retroativamente se o
+/// percentual da participação mudar depois.
+model ProfitDistribution {
+  id                 String                    @id @default(uuid())
+  propertyInvestorId String
+  lucroBase          Decimal                   @db.Decimal(14, 2)
+  percentualAplicado Decimal                   @db.Decimal(5, 2)
+  valorBruto         Decimal                   @db.Decimal(14, 2)
+  aliquotaIR         Decimal                   @default(15) @db.Decimal(5, 2)
+  valorIR            Decimal                   @db.Decimal(14, 2)
+  valorLiquido       Decimal                   @db.Decimal(14, 2)
+  status             ProfitDistributionStatus  @default(PENDENTE)
+  dataPagamento      DateTime?
+  observacoes        String?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  propertyInvestor PropertyInvestor @relation(fields: [propertyInvestorId], references: [id], onDelete: Cascade)
+
+  @@index([propertyInvestorId])
+  @@map("profit_distributions")
+}
+
+/// Corretor da empresa (recebe comissão nas vendas). Sem login próprio.
+model Broker {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  document    String?
+  creci       String? /// registro profissional (CRECI)
+  email       String?
+  phone       String?
+  observacoes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sales   Sale[]
+  userAccount            User?
+  propertiesResponsavel  Property[] @relation("PropertyCorretorResponsavel")
+
+  @@index([companyId])
+  @@map("brokers")
+}
+
+enum SaleStatus {
+  EM_PROSPECCAO
+  PROPOSTA_RECEBIDA
+  EM_NEGOCIACAO
+  CONTRATO_ASSINADO
+  AGUARDANDO_FINANCIAMENTO
+  CONCLUIDA
+  CANCELADA
+}
+
+/// Processo de venda — 1:1 com Property. Exige que o imóvel já tenha sido
+/// adquirido (status ADQUIRIDA). Ao mudar para CONCLUIDA, marca o imóvel como
+/// VENDIDA automaticamente (ver SalesService — "encerramento automático").
+model Sale {
+  id                 String     @id @default(uuid())
+  propertyId         String     @unique
+  brokerId           String?
+  status             SaleStatus @default(EM_PROSPECCAO)
+  valorPedido        Decimal    @db.Decimal(14, 2)
+  comissaoPercentual Decimal    @default(0) @db.Decimal(5, 2)
+  dataInicio         DateTime   @default(now())
+  dataConclusao      DateTime?
+  observacoes        String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  property    Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  broker      Broker?       @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  proposals   Proposal[]
+  contract    SaleContract?
+  financing   Financing?
+  receivables Receivable[]
+
+  @@map("sales")
+}
+
+enum ProposalStatus {
+  PENDENTE
+  ACEITA
+  RECUSADA
+  RETIRADA
+}
+
+model Proposal {
+  id            String         @id @default(uuid())
+  saleId        String
+  buyerName     String
+  buyerDocument String?
+  buyerContact  String?
+  valorOferta   Decimal        @db.Decimal(14, 2)
+  status        ProposalStatus @default(PENDENTE)
+  dataProposta  DateTime       @default(now())
+  observacoes   String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("sale_proposals")
+}
+
+model SaleContract {
+  id             String    @id @default(uuid())
+  saleId         String    @unique
+  valorVenda     Decimal   @db.Decimal(14, 2)
+  dataAssinatura DateTime?
+  storageKey     String?
+  observacoes    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("sale_contracts")
+}
+
+enum FinancingStatus {
+  EM_ANALISE
+  APROVADO
+  REPROVADO
+}
+
+model Financing {
+  id              String          @id @default(uuid())
+  saleId          String          @unique
+  bankName        String?
+  valorFinanciado Decimal         @db.Decimal(14, 2)
+  prazoMeses      Int?
+  status          FinancingStatus @default(EM_ANALISE)
+  observacoes     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("sale_financings")
+}
+
+enum ReceivableStatus {
+  PENDENTE
+  PAGO
+}
+
+/// Parcela a receber da venda. `status` vira PAGO manualmente; a UI destaca
+/// parcelas com `dataVencimento` vencida e `status = PENDENTE` como atrasadas
+/// (mesmo padrão do LegalCaseEvent).
+model Receivable {
+  id             String           @id @default(uuid())
+  saleId         String
+  numeroParcela  Int
+  valor          Decimal          @db.Decimal(14, 2)
+  dataVencimento DateTime
+  dataPagamento  DateTime?
+  status         ReceivableStatus @default(PENDENTE)
+  observacoes    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("sale_receivables")
+}
+
+enum ReportType {
+  PORTFOLIO_SUMMARY
+  PROPERTY_DETAIL
+  FINANCIAL_DRE
+  SALES_PIPELINE
+}
+
+enum ReportFormat {
+  PDF
+  EXCEL
+}
+
+/// Metadados de um relatório gerado sob demanda — o conteúdo é montado a
+/// partir dos dados ao vivo dos módulos existentes no momento da geração;
+/// só o arquivo final (PDF/Excel) fica persistido no storage.
+model Report {
+  id            String       @id @default(uuid())
+  companyId     String
+  type          ReportType
+  format        ReportFormat
+  propertyId    String?
+  storageKey    String
+  generatedById String?
+  createdAt     DateTime     @default(now())
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  property    Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  generatedBy User?    @relation(fields: [generatedById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@map("reports")
+}
+
+/// Catálogo global de permissões (`modulo:acao`), independente de empresa.
+model Permission {
+  id          String  @id @default(uuid())
+  key         String  @unique /// ex.: "finance:view"
+  module      String /// ex.: "finance"
+  description String?
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+/// Refresh token com rotação: cada uso gera um novo registro e revoga o anterior.
+model RefreshToken {
+  id          String    @id @default(uuid())
+  companyId   String
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  replacedBy  String?
+  createdByIp String?
+  createdAt   DateTime  @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([companyId])
+  @@map("refresh_tokens")
+}
+
+/// Log de auditoria — append-only, nunca editável/removível pela aplicação.
+model AuditLog {
+  id         String   @id @default(uuid())
+  companyId  String
+  userId     String?
+  entityType String
+  entityId   String
+  action     String /// CREATE | UPDATE | DELETE | LOGIN | ...
+  before     Json?
+  after      Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, entityType, entityId])
+  @@index([companyId, createdAt])
+  @@map("audit_logs")
+}

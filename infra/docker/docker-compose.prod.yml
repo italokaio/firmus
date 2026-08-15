@@ -1,0 +1,86 @@
+# Sobe a stack completa a partir das imagens de PRODUÇÃO (buildadas via
+# apps/api/Dockerfile e apps/web/Dockerfile) — útil para validar localmente
+# antes de publicar, ou como referência de deploy simples em uma única VM.
+# Para AWS (RDS/S3/ECS), ver infra/aws/.
+#
+# Build + subir (a partir da raiz do monorepo):
+#   docker compose -f infra/docker/docker-compose.prod.yml build
+#   docker compose -f infra/docker/docker-compose.prod.yml up -d
+#
+# Não testado neste ambiente (sem Docker disponível na sessão de
+# desenvolvimento) — revise antes de usar em produção.
+
+name: leilao-erp-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: leilao
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: leilao_erp
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leilao -d leilao_erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:?defina STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:?defina STORAGE_SECRET_KEY}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://leilao:${POSTGRES_PASSWORD}@postgres:5432/leilao_erp?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?defina JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?defina JWT_REFRESH_SECRET}
+      COOKIE_SECURE: "true"
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:?defina CORS_ORIGIN (origem do frontend)}
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_BUCKET: leilao-erp-prod
+      STORAGE_FORCE_PATH_STYLE: "true"
+    ports:
+      - "3001:3001"
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?defina NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3002:3002"
+
+volumes:
+  postgres-data:
+  minio-data:
