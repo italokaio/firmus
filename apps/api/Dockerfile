@@ -7,7 +7,7 @@
 # Não testado neste ambiente (sem Docker disponível na sessão de
 # desenvolvimento) — revise antes de usar em produção.
 
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 RUN corepack enable
 
 # ---- Poda: gera um subconjunto do monorepo só com o que a API precisa ----
@@ -31,7 +31,7 @@ RUN pnpm turbo run build --filter=@leilao-erp/api
 RUN pnpm prune --prod
 
 # ---- Imagem final, roda como usuário não-root ----
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 RUN apk add --no-cache openssl
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nestjs
 WORKDIR /app

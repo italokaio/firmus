@@ -9,7 +9,7 @@
 # Não testado neste ambiente (sem Docker disponível na sessão de
 # desenvolvimento) — revise antes de usar em produção.
 
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 RUN corepack enable
 
 # ---- Poda: gera um subconjunto do monorepo só com o que o web precisa ----
@@ -35,7 +35,7 @@ RUN pnpm --filter @leilao-erp/types build
 RUN pnpm turbo run build --filter=@leilao-erp/web
 
 # ---- Imagem final: usa o output standalone do Next (bem mais enxuto) ----
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 WORKDIR /app
 
