@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
@@ -17,6 +17,15 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Firmus - Gestão Imobiliária",
   description: "Gestão completa de imóveis — leilão, venda direta e administração para terceiros",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Firmus",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#005666",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
