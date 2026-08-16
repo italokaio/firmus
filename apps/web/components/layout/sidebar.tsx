@@ -33,24 +33,28 @@ const navItems = [
 ] as const;
 
 export function Sidebar() {
-  const pathname = usePathname();
-
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
       <div className="flex h-14 items-center px-5">
         <Logo className="h-6" />
       </div>
-
-      <nav className="flex flex-1 flex-col gap-0.5 px-3 py-2">
-        {navItems.map((item) => (
-          <SidebarLink key={item.href} {...item} active={pathname.startsWith(item.href)} />
-        ))}
-      </nav>
-
+      <SidebarNav />
       <div className="border-t border-sidebar-border px-5 py-4 text-xs text-muted-foreground">
         Fase 8 · Relatórios
       </div>
     </aside>
+  );
+}
+
+export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+  const pathname = usePathname();
+
+  return (
+    <nav className="flex flex-1 flex-col gap-0.5 px-3 py-2">
+      {navItems.map((item) => (
+        <SidebarLink key={item.href} {...item} active={pathname.startsWith(item.href)} onNavigate={onNavigate} />
+      ))}
+    </nav>
   );
 }
 
@@ -60,13 +64,15 @@ function SidebarLink({
   icon: Icon,
   permission,
   active,
-}: (typeof navItems)[number] & { active: boolean }) {
+  onNavigate,
+}: (typeof navItems)[number] & { active: boolean; onNavigate?: () => void }) {
   const allowed = usePermission(permission);
   if (!allowed) return null;
 
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={cn(
         "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
         active

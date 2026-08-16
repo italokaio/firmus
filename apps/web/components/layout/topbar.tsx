@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { LogOut, ShieldCheck, User as UserIcon } from "lucide-react";
+import { LogOut, Menu, ShieldCheck, User as UserIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +13,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { Logo } from "@/components/layout/logo";
+import { SidebarNav } from "@/components/layout/sidebar";
 import { useAuth } from "@/lib/hooks/use-auth";
 
 function initials(name: string) {
@@ -24,9 +29,24 @@ function initials(name: string) {
 
 export function Topbar() {
   const { user, logout } = useAuth();
+  const [navOpen, setNavOpen] = useState(false);
 
   return (
-    <header className="flex h-14 items-center justify-end gap-2 border-b border-border px-6">
+    <header className="flex h-14 items-center justify-between gap-2 border-b border-border px-4 md:justify-end md:px-6">
+      <Sheet open={navOpen} onOpenChange={setNavOpen}>
+        <SheetTrigger asChild>
+          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Abrir menu">
+            <Menu className="size-5" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="p-0">
+          <SheetTitle>Menu de navegação</SheetTitle>
+          <div className="flex h-14 items-center px-5">
+            <Logo className="h-6" />
+          </div>
+          <SidebarNav onNavigate={() => setNavOpen(false)} />
+        </SheetContent>
+      </Sheet>
       <ThemeToggle />
       <DropdownMenu>
         <DropdownMenuTrigger className="outline-none">
