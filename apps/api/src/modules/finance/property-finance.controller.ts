@@ -24,6 +24,16 @@ export class PropertyFinanceController {
     return this.financeService.getAccountByProperty(user.companyId, propertyId);
   }
 
+  @Get("transactions/:txId/history")
+  @RequirePermission(PERMISSIONS.FINANCE_VIEW)
+  getTransactionHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("propertyId") propertyId: string,
+    @Param("txId") txId: string,
+  ) {
+    return this.financeService.getTransactionHistoryByProperty(user.companyId, propertyId, txId);
+  }
+
   @Get("transactions")
   @RequirePermission(PERMISSIONS.FINANCE_VIEW)
   listTransactions(

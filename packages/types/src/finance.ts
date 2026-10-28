@@ -23,6 +23,12 @@ export const TRANSACTION_STATUS_LABELS: Record<TransactionStatus, string> = {
   REALIZADO: "Realizado",
 };
 
+/** "Pago por": de quem saiu o dinheiro do lançamento. `EMPRESA` é a opção única "Caixa da empresa". */
+export const TRANSACTION_ORIGEM_TIPOS = ["INVESTIDOR", "EMPRESA"] as const;
+export type TransactionOrigemTipo = (typeof TRANSACTION_ORIGEM_TIPOS)[number];
+export const EMPRESA_ORIGEM_LABEL = "Caixa da empresa";
+export const ORIGEM_NAO_INFORMADA_LABEL = "Não informado";
+
 const money = z
   .union([z.string(), z.number()])
   .transform((value) => String(value))
@@ -53,23 +59,55 @@ export const updateFinanceAccountSchema = z.object({
 });
 export type UpdateFinanceAccountInput = z.infer<typeof updateFinanceAccountSchema>;
 
-export const createTransactionSchema = z.object({
-  categoryId: z.string().uuid(),
-  amount: money,
-  date: z.string().datetime(),
-  description: z.string().optional(),
-  status: z.enum(TRANSACTION_STATUSES).default("PREVISTO"),
-});
+const origemFields = {
+  origemTipo: z.enum(TRANSACTION_ORIGEM_TIPOS).nullable().optional(),
+  investidorId: z.string().uuid().nullable().optional(),
+};
+
+/** INVESTIDOR exige investidorId; EMPRESA (ou sem origem) não pode trazer investidorId. */
+function refineOrigem(
+  value: { origemTipo?: TransactionOrigemTipo | null; investidorId?: string | null },
+  ctx: z.RefinementCtx,
+) {
+  if (value.origemTipo === "INVESTIDOR" && !value.investidorId) {
+    ctx.addIssue({ code: "custom", path: ["investidorId"], message: "Selecione o investidor" });
+  }
+  if (value.origemTipo !== "INVESTIDOR" && value.investidorId) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["origemTipo"],
+      message: "Informe a origem como investidor para vincular um investidor",
+    });
+  }
+}
+
+export const createTransactionSchema = z
+  .object({
+    categoryId: z.string().uuid(),
+    amount: money,
+    date: z.string().datetime(),
+    description: z.string().optional(),
+    status: z.enum(TRANSACTION_STATUSES).default("PREVISTO"),
+    ...origemFields,
+  })
+  .superRefine(refineOrigem);
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 
-export const updateTransactionSchema = z.object({
-  categoryId: z.string().uuid().optional(),
-  amount: money.optional(),
-  date: z.string().datetime().optional(),
-  description: z.string().optional(),
-  status: z.enum(TRANSACTION_STATUSES).optional(),
-  conciliado: z.boolean().optional(),
-});
+export const updateTransactionSchema = z
+  .object({
+    categoryId: z.string().uuid().optional(),
+    amount: money.optional(),
+    date: z.string().datetime().optional(),
+    description: z.string().optional(),
+    status: z.enum(TRANSACTION_STATUSES).optional(),
+    conciliado: z.boolean().optional(),
+    ...origemFields,
+  })
+  .superRefine((value, ctx) => {
+    // Só valida a origem quando ela faz parte da edição — enviar apenas
+    // investidorId (sem origemTipo) cai na regra de refineOrigem.
+    if (value.origemTipo !== undefined || value.investidorId !== undefined) refineOrigem(value, ctx);
+  });
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
 
 export const transactionFilterSchema = z.object({
@@ -79,6 +117,17 @@ export const transactionFilterSchema = z.object({
   to: z.string().datetime().optional(),
 });
 export type TransactionFilterInput = z.infer<typeof transactionFilterSchema>;
+
+/** Filtros da exportação/extrato de lançamentos (toda a empresa). `origem` = "EMPRESA", "NAO_INFORMADO" ou o id de um investidor. */
+export const transactionExportFilterSchema = transactionFilterSchema.extend({
+  propertyId: z.string().uuid().optional(),
+  accountId: z.string().uuid().optional(),
+  origem: z.string().min(1).optional(),
+});
+export type TransactionExportFilterInput = z.infer<typeof transactionExportFilterSchema>;
+
+export const ORIGEM_FILTER_EMPRESA = "EMPRESA";
+export const ORIGEM_FILTER_NAO_INFORMADO = "NAO_INFORMADO";
 
 export interface FinanceCategoryDto {
   id: string;
@@ -114,8 +163,31 @@ export interface TransactionDto {
   status: TransactionStatus;
   conciliado: boolean;
   conciliadoEm: string | null;
+  origemTipo: TransactionOrigemTipo | null;
+  investidorId: string | null;
+  investidor: { id: string; name: string } | null;
+  /** Há alterações registradas no histórico (habilita o link "Ver histórico"). */
+  hasHistory: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TransactionHistoryEntryDto {
+  id: string;
+  createdAt: string;
+  userName: string | null;
+  /** Nome legível do campo alterado (ex.: "Valor", "Pago por"). */
+  field: string;
+  before: string;
+  after: string;
+}
+
+/** Soma de lançamentos por origem ("Pago por"). `key` = id do investidor, "EMPRESA" ou "NAO_INFORMADO". */
+export interface OriginTotalDto {
+  key: string;
+  label: string;
+  total: string;
+  count: number;
 }
 
 export interface DreCategoryLineDto {

@@ -138,6 +138,7 @@ export function FinanceTab({ propertyId, canManage }: { propertyId: string; canM
             categories={categories}
             canManage={canManage}
             onMutated={invalidateDerived}
+            exportQuery={`propertyId=${propertyId}`}
           />
         </CardContent>
       </Card>

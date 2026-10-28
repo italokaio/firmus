@@ -96,7 +96,36 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   return payload as T;
 }
 
+/** Baixa um arquivo (ex.: Excel) autenticado pelos cookies da sessão e dispara o download no navegador. */
+async function downloadFile(path: string, fileName: string, isRetry = false): Promise<void> {
+  const response = await fetch(`${API_URL}/api${path}`, { credentials: "include" });
+
+  if (response.status === 401 && !isRetry) {
+    refreshPromise ??= refreshSession().finally(() => {
+      refreshPromise = null;
+    });
+    if (await refreshPromise) return downloadFile(path, fileName, true);
+  }
+  if (!response.ok) {
+    let message = "Não foi possível gerar o arquivo";
+    try {
+      message = ((await response.json()) as ApiErrorBody).message ?? message;
+    } catch {
+      // corpo não era JSON — mantém a mensagem padrão
+    }
+    throw new ApiError(response.status, message);
+  }
+
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export const apiClient = {
+  download: downloadFile,
   get: <T>(path: string, options?: RequestOptions) => request<T>(path, { ...options, method: "GET" }),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>(path, { ...options, method: "POST", body }),

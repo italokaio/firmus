@@ -4,16 +4,46 @@ import type {
   CreateFinanceAccountInput,
   CreateFinanceCategoryInput,
   CreateTransactionInput,
+  TransactionExportFilterInput,
   TransactionFilterInput,
+  TransactionHistoryEntryDto,
   UpdateFinanceAccountInput,
   UpdateTransactionInput,
 } from "@leilao-erp/types";
+import { ORIGEM_FILTER_EMPRESA, ORIGEM_FILTER_NAO_INFORMADO } from "@leilao-erp/types";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import {
+  assertConciliadoEditable,
+  assertPositiveAmount,
+  auditLogToHistoryEntries,
+  diffTransaction,
+  sumByOrigin,
+  type TransactionSnapshot,
+} from "./transaction-rules";
+import { buildTransactionsWorkbook } from "./transactions-export";
 
 const transactionInclude = {
   category: { select: { id: true, name: true, type: true } },
+  investidor: { select: { id: true, name: true } },
 };
+
+type TransactionWithRelations = Prisma.TransactionGetPayload<{ include: typeof transactionInclude }>;
+
+function toSnapshot(tx: TransactionWithRelations): TransactionSnapshot {
+  return {
+    categoryId: tx.categoryId,
+    categoryName: tx.category.name,
+    amount: tx.amount,
+    date: tx.date,
+    description: tx.description,
+    status: tx.status,
+    conciliado: tx.conciliado,
+    origemTipo: tx.origemTipo,
+    investidorId: tx.investidorId,
+    investidorName: tx.investidor?.name ?? null,
+  };
+}
 
 @Injectable()
 export class FinanceService {
@@ -150,7 +180,7 @@ export class FinanceService {
 
   async listTransactions(companyId: string, accountId: string, filters: TransactionFilterInput) {
     await this.assertAccountBelongsToCompany(companyId, accountId);
-    return this.prisma.transaction.findMany({
+    const transactions = await this.prisma.transaction.findMany({
       where: {
         financeAccountId: accountId,
         status: filters.status,
@@ -163,6 +193,95 @@ export class FinanceService {
       include: transactionInclude,
       orderBy: { date: "desc" },
     });
+
+    // "Ver histórico" só aparece em lançamentos que já foram alterados.
+    const edited = await this.prisma.auditLog.findMany({
+      where: {
+        companyId,
+        entityType: "Transaction",
+        action: "UPDATE",
+        entityId: { in: transactions.map((tx) => tx.id) },
+      },
+      select: { entityId: true },
+      distinct: ["entityId"],
+    });
+    const editedIds = new Set(edited.map((row) => row.entityId));
+    return transactions.map((tx) => ({ ...tx, hasHistory: editedIds.has(tx.id) }));
+  }
+
+  /** Histórico de alterações de um lançamento, do mais recente para o mais antigo. */
+  async getTransactionHistory(
+    companyId: string,
+    accountId: string,
+    id: string,
+  ): Promise<TransactionHistoryEntryDto[]> {
+    await this.findTransactionOrThrow(companyId, accountId, id);
+    const logs = await this.prisma.auditLog.findMany({
+      where: { companyId, entityType: "Transaction", entityId: id, action: "UPDATE" },
+      include: { user: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return logs.flatMap((log) => auditLogToHistoryEntries(log));
+  }
+
+  async getTransactionHistoryByProperty(companyId: string, propertyId: string, id: string) {
+    const account = await this.resolvePropertyAccount(companyId, propertyId);
+    return this.getTransactionHistory(companyId, account.id, id);
+  }
+
+  private buildExportWhere(companyId: string, filters: TransactionExportFilterInput): Prisma.TransactionWhereInput {
+    const where: Prisma.TransactionWhereInput = {
+      financeAccount: { companyId, id: filters.accountId, propertyId: filters.propertyId },
+      status: filters.status,
+      categoryId: filters.categoryId,
+      date: {
+        gte: filters.from ? new Date(filters.from) : undefined,
+        lte: filters.to ? new Date(filters.to) : undefined,
+      },
+    };
+    if (filters.origem === ORIGEM_FILTER_EMPRESA) where.origemTipo = "EMPRESA";
+    else if (filters.origem === ORIGEM_FILTER_NAO_INFORMADO) where.origemTipo = null;
+    else if (filters.origem) {
+      where.origemTipo = "INVESTIDOR";
+      where.investidorId = filters.origem;
+    }
+    return where;
+  }
+
+  /** Lançamentos de toda a empresa (com imóvel e conta) para o extrato/exportação, já filtrados. */
+  listTransactionsForExport(companyId: string, filters: TransactionExportFilterInput) {
+    return this.prisma.transaction.findMany({
+      where: this.buildExportWhere(companyId, filters),
+      include: {
+        ...transactionInclude,
+        financeAccount: { select: { name: true, property: { select: { origem: true } } } },
+      },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  async exportTransactionsXlsx(companyId: string, filters: TransactionExportFilterInput): Promise<Buffer> {
+    return buildTransactionsWorkbook(await this.listTransactionsForExport(companyId, filters));
+  }
+
+  /**
+   * Soma das **despesas** por origem — "de quem veio o capital".
+   * Base para o dashboard, a DRE e os relatórios das próximas fases.
+   */
+  async getTotalsByOrigin(companyId: string, filters: TransactionExportFilterInput) {
+    const where = this.buildExportWhere(companyId, filters);
+    const transactions = await this.prisma.transaction.findMany({
+      where: { ...where, category: { type: "DESPESA" } },
+      include: transactionInclude,
+    });
+    return sumByOrigin(
+      transactions.map((tx) => ({
+        amount: tx.amount,
+        origemTipo: tx.origemTipo,
+        investidorId: tx.investidorId,
+        investidorName: tx.investidor?.name ?? null,
+      })),
+    );
   }
 
   async createTransaction(
@@ -173,6 +292,10 @@ export class FinanceService {
   ) {
     await this.assertAccountBelongsToCompany(companyId, accountId);
     await this.assertCategoryBelongsToCompany(companyId, input.categoryId);
+    assertPositiveAmount(input.amount);
+    const origemTipo = input.origemTipo ?? null;
+    const investidorId = origemTipo === "INVESTIDOR" ? (input.investidorId ?? null) : null;
+    if (investidorId) await this.assertInvestorBelongsToCompany(companyId, investidorId);
 
     const transaction = await this.prisma.transaction.create({
       data: {
@@ -180,8 +303,10 @@ export class FinanceService {
         categoryId: input.categoryId,
         amount: input.amount,
         date: new Date(input.date),
-        description: input.description,
+        description: input.description?.trim() || null,
         status: input.status,
+        origemTipo,
+        investidorId,
         createdById,
       },
       include: transactionInclude,
@@ -191,41 +316,101 @@ export class FinanceService {
       entityType: "Transaction",
       entityId: transaction.id,
       action: "CREATE",
-      after: { accountId, amount: input.amount, status: input.status },
+      after: { accountId, amount: input.amount, status: input.status, origemTipo, investidorId },
     });
 
-    return transaction;
+    return { ...transaction, hasHistory: false };
   }
 
+  /**
+   * Edita qualquer campo do lançamento. Cada campo realmente alterado vira uma
+   * linha de histórico (AuditLog UPDATE), gravada na mesma transação da edição.
+   */
   async updateTransaction(companyId: string, accountId: string, id: string, input: UpdateTransactionInput) {
-    const transaction = await this.findTransactionOrThrow(companyId, accountId, id);
-    if (input.categoryId) await this.assertCategoryBelongsToCompany(companyId, input.categoryId);
+    const existing = await this.findTransactionOrThrow(companyId, accountId, id);
+    const before = toSnapshot(existing);
 
-    const conciliadoChanged = input.conciliado !== undefined && input.conciliado !== transaction.conciliado;
+    let categoryName = existing.category.name;
+    if (input.categoryId && input.categoryId !== existing.categoryId) {
+      const category = await this.assertCategoryBelongsToCompany(companyId, input.categoryId);
+      if (category.type !== existing.category.type) {
+        throw new BadRequestException(
+          "A nova categoria deve ser do mesmo tipo (receita ou despesa) do lançamento",
+        );
+      }
+      categoryName = category.name;
+    }
+    if (input.amount !== undefined) assertPositiveAmount(input.amount);
 
-    const updated = await this.prisma.transaction.update({
-      where: { id },
-      data: {
-        categoryId: input.categoryId,
-        amount: input.amount,
-        date: input.date ? new Date(input.date) : undefined,
-        description: input.description,
-        status: input.status,
-        conciliado: input.conciliado,
-        conciliadoEm: conciliadoChanged ? (input.conciliado ? new Date() : null) : undefined,
-      },
-      include: transactionInclude,
+    // Origem: só muda quando enviada. EMPRESA e "sem origem" nunca guardam investidor.
+    let origemTipo = existing.origemTipo;
+    let investidorId = existing.investidorId;
+    let investidorName = existing.investidor?.name ?? null;
+    if (input.origemTipo !== undefined) {
+      origemTipo = input.origemTipo;
+      investidorId = input.origemTipo === "INVESTIDOR" ? (input.investidorId ?? null) : null;
+      investidorName = null;
+      if (investidorId) investidorName = (await this.assertInvestorBelongsToCompany(companyId, investidorId)).name;
+    }
+
+    const description =
+      input.description === undefined ? existing.description : input.description.trim() || null;
+
+    const after: TransactionSnapshot = {
+      categoryId: input.categoryId ?? existing.categoryId,
+      categoryName,
+      amount: input.amount ?? existing.amount,
+      date: input.date ? new Date(input.date) : existing.date,
+      description,
+      status: input.status ?? existing.status,
+      conciliado: input.conciliado ?? existing.conciliado,
+      origemTipo,
+      investidorId,
+      investidorName,
+    };
+
+    assertConciliadoEditable(before, after);
+    const changes = diffTransaction(before, after);
+    if (changes.length === 0) return { ...existing, hasHistory: await this.hasHistory(companyId, id) };
+
+    const conciliadoChanged = after.conciliado !== before.conciliado;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.transaction.update({
+        where: { id },
+        data: {
+          categoryId: after.categoryId,
+          amount: after.amount,
+          date: after.date,
+          description: after.description,
+          status: after.status,
+          conciliado: after.conciliado,
+          conciliadoEm: conciliadoChanged ? (after.conciliado ? new Date() : null) : undefined,
+          origemTipo: after.origemTipo,
+          investidorId: after.investidorId,
+        },
+        include: transactionInclude,
+      });
+      for (const change of changes) {
+        await this.auditService.log({
+          client: tx,
+          entityType: "Transaction",
+          entityId: id,
+          action: "UPDATE",
+          before: { campo: change.field, valor: change.before },
+          after: { campo: change.field, valor: change.after },
+        });
+      }
+      return result;
     });
 
-    await this.auditService.log({
-      entityType: "Transaction",
-      entityId: id,
-      action: "UPDATE",
-      before: { status: transaction.status, conciliado: transaction.conciliado },
-      after: { status: updated.status, conciliado: updated.conciliado },
-    });
+    return { ...updated, hasHistory: true };
+  }
 
-    return updated;
+  private async hasHistory(companyId: string, id: string): Promise<boolean> {
+    const count = await this.prisma.auditLog.count({
+      where: { companyId, entityType: "Transaction", entityId: id, action: "UPDATE" },
+    });
+    return count > 0;
   }
 
   async deleteTransaction(companyId: string, accountId: string, id: string) {
@@ -538,9 +723,18 @@ export class FinanceService {
 
   private async findTransactionOrThrow(companyId: string, accountId: string, id: string) {
     await this.assertAccountBelongsToCompany(companyId, accountId);
-    const transaction = await this.prisma.transaction.findFirst({ where: { id, financeAccountId: accountId } });
+    const transaction = await this.prisma.transaction.findFirst({
+      where: { id, financeAccountId: accountId },
+      include: transactionInclude,
+    });
     if (!transaction) throw new NotFoundException("Lançamento não encontrado");
     return transaction;
+  }
+
+  private async assertInvestorBelongsToCompany(companyId: string, id: string) {
+    const investor = await this.prisma.investor.findFirst({ where: { id, companyId } });
+    if (!investor) throw new BadRequestException("Investidor informado não existe nesta empresa");
+    return investor;
   }
 
   private async assertAccountBelongsToCompany(companyId: string, id: string) {

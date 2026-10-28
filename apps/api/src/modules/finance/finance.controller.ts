@@ -1,9 +1,24 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UsePipes } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+  StreamableFile,
+  UsePipes,
+} from "@nestjs/common";
 import {
   PERMISSIONS,
   createFinanceAccountSchema,
   createFinanceCategorySchema,
   createTransactionSchema,
+  transactionExportFilterSchema,
   transactionFilterSchema,
   updateFinanceAccountSchema,
   updateTransactionSchema,
@@ -11,6 +26,7 @@ import {
   type CreateFinanceAccountInput,
   type CreateFinanceCategoryInput,
   type CreateTransactionInput,
+  type TransactionExportFilterInput,
   type TransactionFilterInput,
   type UpdateFinanceAccountInput,
   type UpdateTransactionInput,
@@ -79,6 +95,38 @@ export class FinanceController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteAccount(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string): Promise<void> {
     await this.financeService.deleteAccount(user.companyId, id);
+  }
+
+  /** Extrato em Excel (uma linha por lançamento) de toda a empresa, com filtros opcionais. */
+  @Get("transactions/export")
+  @RequirePermission(PERMISSIONS.FINANCE_VIEW)
+  @Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  @Header("Content-Disposition", 'attachment; filename="lancamentos.xlsx"')
+  async exportTransactions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(transactionExportFilterSchema)) filters: TransactionExportFilterInput,
+  ) {
+    return new StreamableFile(await this.financeService.exportTransactionsXlsx(user.companyId, filters));
+  }
+
+  /** Soma das despesas por origem ("Pago por") para o filtro informado. */
+  @Get("transactions/origin-totals")
+  @RequirePermission(PERMISSIONS.FINANCE_VIEW)
+  getOriginTotals(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(transactionExportFilterSchema)) filters: TransactionExportFilterInput,
+  ) {
+    return this.financeService.getTotalsByOrigin(user.companyId, filters);
+  }
+
+  @Get("accounts/:id/transactions/:txId/history")
+  @RequirePermission(PERMISSIONS.FINANCE_VIEW)
+  getTransactionHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") accountId: string,
+    @Param("txId") txId: string,
+  ) {
+    return this.financeService.getTransactionHistory(user.companyId, accountId, txId);
   }
 
   @Get("accounts/:id/transactions")

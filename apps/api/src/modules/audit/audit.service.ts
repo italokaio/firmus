@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import { getRequestContext } from "../../common/context/request-context";
 
@@ -13,6 +14,8 @@ interface LogParams {
   /** Necessário apenas em fluxos sem usuário autenticado ainda (ex.: login). */
   companyId?: string;
   userId?: string;
+  /** Cliente da transação em curso, para gravar a auditoria atomicamente com a mudança auditada. */
+  client?: Prisma.TransactionClient;
 }
 
 /**
@@ -39,7 +42,7 @@ export class AuditService {
       return;
     }
 
-    await this.prisma.auditLog.create({
+    await (params.client ?? this.prisma).auditLog.create({
       data: {
         companyId,
         userId: userId ?? null,

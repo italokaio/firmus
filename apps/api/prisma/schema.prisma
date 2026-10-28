@@ -649,6 +649,13 @@ enum TransactionStatus {
   REALIZADO
 }
 
+/// De quem saiu (ou para quem entrou) o dinheiro de um lançamento. Opcional:
+/// lançamentos antigos ficam sem origem ("Não informado").
+enum TransactionOrigemTipo {
+  INVESTIDOR
+  EMPRESA
+}
+
 /// Lançamento de entrada/saída em uma FinanceAccount. O tipo (receita/despesa)
 /// vem da FinanceCategory associada — nunca duplicado aqui, para não divergir.
 model Transaction {
@@ -661,6 +668,11 @@ model Transaction {
   status           TransactionStatus  @default(PREVISTO)
   conciliado       Boolean            @default(false)
   conciliadoEm     DateTime?
+  /// "Pago por": INVESTIDOR (exige investidorId) ou EMPRESA ("Caixa da empresa").
+  origemTipo       TransactionOrigemTipo?
+  investidorId     String?
+  /// Reservado para vincular a origem "empresa" a uma conta de caixa — ainda sem uso.
+  contaOrigemId    String?
   createdById      String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -668,10 +680,12 @@ model Transaction {
   financeAccount FinanceAccount  @relation(fields: [financeAccountId], references: [id], onDelete: Cascade)
   category       FinanceCategory @relation(fields: [categoryId], references: [id])
   createdBy      User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  investidor     Investor?       @relation(fields: [investidorId], references: [id], onDelete: SetNull)
 
   @@index([financeAccountId])
   @@index([financeAccountId, status])
   @@index([financeAccountId, date])
+  @@index([investidorId])
   @@map("transactions")
 }
 
@@ -724,6 +738,7 @@ model Investor {
   company      Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   participations PropertyInvestor[]
   userAccount    User?
+  transactions   Transaction[]
 
   @@unique([companyId, document])
   @@index([companyId])

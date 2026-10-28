@@ -267,6 +267,7 @@ export default function FinancePage() {
               categories={categories}
               canManage={canManage}
               onMutated={invalidateAccounts}
+              exportQuery={`accountId=${selectedAccount.id}`}
             />
           </CardContent>
         </Card>

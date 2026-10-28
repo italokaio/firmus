@@ -12,6 +12,11 @@ export function formatDate(value: string | Date): string {
   return new Intl.DateTimeFormat("pt-BR").format(new Date(value));
 }
 
+/** Para datas de calendário gravadas à meia-noite UTC (ex.: data do lançamento) — evita mostrar um dia a menos no fuso do Brasil. */
+export function formatCalendarDate(value: string | Date): string {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(value));
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB"];
