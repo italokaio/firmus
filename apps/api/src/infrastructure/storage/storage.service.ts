@@ -28,6 +28,10 @@ export class StorageService {
       endpoint: this.configService.get<string>("STORAGE_ENDPOINT", "http://localhost:9000"),
       region: this.configService.get<string>("STORAGE_REGION", "us-east-1"),
       forcePathStyle: this.configService.get<string>("STORAGE_FORCE_PATH_STYLE", "true") === "true",
+      // SDKs recentes embutem um checksum CRC32 (de corpo vazio) na URL pré-assinada,
+      // o que faz Cloudflare R2/MinIO rejeitarem o PUT do navegador.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
       credentials: {
         accessKeyId: this.configService.get<string>("STORAGE_ACCESS_KEY", "leilao"),
         secretAccessKey: this.configService.get<string>("STORAGE_SECRET_KEY", "leilao12345"),
