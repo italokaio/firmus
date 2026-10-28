@@ -1,11 +1,18 @@
 import { z } from "zod";
 
-export const REPORT_TYPES = ["PORTFOLIO_SUMMARY", "PROPERTY_DETAIL", "FINANCIAL_DRE", "SALES_PIPELINE"] as const;
+export const REPORT_TYPES = [
+  "PORTFOLIO_SUMMARY",
+  "PROPERTY_DETAIL",
+  "FINANCIAL_DRE",
+  "FINANCIAL_CASHFLOW_GERAL",
+  "SALES_PIPELINE",
+] as const;
 export type ReportType = (typeof REPORT_TYPES)[number];
 export const REPORT_TYPE_LABELS: Record<ReportType, string> = {
   PORTFOLIO_SUMMARY: "Resumo do portfólio",
   PROPERTY_DETAIL: "Dossiê do imóvel",
   FINANCIAL_DRE: "DRE do imóvel",
+  FINANCIAL_CASHFLOW_GERAL: "Fluxo de caixa geral (empresa)",
   SALES_PIPELINE: "Pipeline de vendas",
 };
 /** Tipos de relatório que exigem um imóvel específico como filtro. */

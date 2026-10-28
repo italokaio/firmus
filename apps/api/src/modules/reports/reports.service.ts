@@ -125,6 +125,8 @@ export class ReportsService {
         return this.buildPropertyDetail(companyId, propertyId!);
       case "FINANCIAL_DRE":
         return this.buildFinancialDre(companyId, propertyId!);
+      case "FINANCIAL_CASHFLOW_GERAL":
+        return this.buildCompanyCashflow(companyId);
       case "SALES_PIPELINE":
         return this.buildSalesPipeline(companyId);
     }
@@ -296,6 +298,42 @@ export class ReportsService {
         {
           kind: "table",
           heading: "Fluxo de caixa mensal",
+          columns: ["Mês", "Previsto entradas", "Previsto saídas", "Realizado entradas", "Realizado saídas", "Saldo"],
+          rows: cashflow.map((row) => [
+            row.month,
+            formatBRL(row.previstoEntradas),
+            formatBRL(row.previstoSaidas),
+            formatBRL(row.realizadoEntradas),
+            formatBRL(row.realizadoSaidas),
+            formatBRL(row.saldoAcumulado),
+          ]),
+        },
+      ],
+    };
+  }
+
+  private async buildCompanyCashflow(companyId: string): Promise<ReportContent> {
+    const [summary, cashflow] = await Promise.all([
+      this.financeService.getSummary(companyId),
+      this.financeService.getCompanyCashflow(companyId),
+    ]);
+
+    return {
+      title: "Fluxo de Caixa Geral",
+      subtitle: `Todas as contas da empresa (geral, SPEs e imóveis) · Gerado em ${formatDateBR(new Date())}`,
+      sections: [
+        {
+          kind: "kv",
+          heading: "Resumo",
+          rows: [
+            ["Saldo consolidado", formatBRL(summary.saldoConsolidado)],
+            ["Receitas realizadas no mês", formatBRL(summary.totalReceitasMes)],
+            ["Despesas realizadas no mês", formatBRL(summary.totalDespesasMes)],
+          ],
+        },
+        {
+          kind: "table",
+          heading: "Fluxo de caixa mensal consolidado",
           columns: ["Mês", "Previsto entradas", "Previsto saídas", "Realizado entradas", "Realizado saídas", "Saldo"],
           rows: cashflow.map((row) => [
             row.month,

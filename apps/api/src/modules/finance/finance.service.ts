@@ -376,6 +376,69 @@ export class FinanceService {
       });
   }
 
+  /** Fluxo de caixa mensal consolidado de toda a empresa (todas as contas — geral,
+   * empresa, SPEs e imóveis), na mesma forma de `getCashflow`, mas sem filtrar
+   * por uma conta específica. Usado no relatório de fluxo de caixa geral. */
+  async getCompanyCashflow(companyId: string) {
+    const [accounts, transactions] = await Promise.all([
+      this.prisma.financeAccount.findMany({ where: { companyId }, select: { saldoInicial: true } }),
+      this.prisma.transaction.findMany({
+        where: { financeAccount: { companyId } },
+        include: transactionInclude,
+        orderBy: { date: "asc" },
+      }),
+    ]);
+
+    const saldoInicialTotal = accounts.reduce(
+      (sum, a) => sum.plus(a.saldoInicial),
+      new Prisma.Decimal(0),
+    );
+
+    const months = new Map<
+      string,
+      {
+        previstoEntradas: Prisma.Decimal;
+        previstoSaidas: Prisma.Decimal;
+        realizadoEntradas: Prisma.Decimal;
+        realizadoSaidas: Prisma.Decimal;
+      }
+    >();
+
+    for (const tx of transactions) {
+      const month = tx.date.toISOString().slice(0, 7);
+      const entry = months.get(month) ?? {
+        previstoEntradas: new Prisma.Decimal(0),
+        previstoSaidas: new Prisma.Decimal(0),
+        realizadoEntradas: new Prisma.Decimal(0),
+        realizadoSaidas: new Prisma.Decimal(0),
+      };
+      const isEntrada = tx.category.type === "RECEITA";
+      if (tx.status === "PREVISTO") {
+        if (isEntrada) entry.previstoEntradas = entry.previstoEntradas.plus(tx.amount);
+        else entry.previstoSaidas = entry.previstoSaidas.plus(tx.amount);
+      } else {
+        if (isEntrada) entry.realizadoEntradas = entry.realizadoEntradas.plus(tx.amount);
+        else entry.realizadoSaidas = entry.realizadoSaidas.plus(tx.amount);
+      }
+      months.set(month, entry);
+    }
+
+    let saldoAcumulado = saldoInicialTotal;
+    return [...months.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, v]) => {
+        saldoAcumulado = saldoAcumulado.plus(v.realizadoEntradas).minus(v.realizadoSaidas);
+        return {
+          month,
+          previstoEntradas: v.previstoEntradas.toFixed(2),
+          previstoSaidas: v.previstoSaidas.toFixed(2),
+          realizadoEntradas: v.realizadoEntradas.toFixed(2),
+          realizadoSaidas: v.realizadoSaidas.toFixed(2),
+          saldoAcumulado: saldoAcumulado.toFixed(2),
+        };
+      });
+  }
+
   async getSummary(companyId: string) {
     const [accounts, transactions] = await Promise.all([
       this.prisma.financeAccount.findMany({ where: { companyId }, select: { saldoInicial: true } }),
