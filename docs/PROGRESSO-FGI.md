@@ -5,9 +5,9 @@
 | Fase | Entrega | Status |
 |---|---|---|
 | 1 | Lançamentos: edição, histórico, "Pago por", Excel | **Concluída e publicada em 28/10/2026** (migrações aplicadas em produção, OK do usuário) |
-| 2 | Cancelamento de aquisição | **Implementada e commitada — aguardando OK final** (NÃO publicada; migração pendente em produção) |
-| 3 | Identidade visual Firmus | **Implementada e commitada — aguardando OK final** (NÃO publicada; sem migração) |
-| 4 | Novo dashboard | Pendente |
+| 2 | Cancelamento de aquisição | **Concluída e publicada em 29/10/2026** (migração `add_aquisicao_cancelada` aplicada em produção) |
+| 3 | Identidade visual Firmus | **Publicada em 29/10/2026** (aguardando conferência visual do usuário) |
+| 4 | Novo dashboard | **Levantamento feito — aguardando OK do plano** |
 | 5 | DRE do imóvel detalhada | Pendente |
 | 6 | Relatórios com a marca | Pendente |
 
@@ -97,4 +97,18 @@
 
 ## Para conferir visualmente (não consegui ver a tela)
 Login, Dashboard (tema escuro e claro), lista e detalhe de imóvel, aba Financeiro (etiquetas Previsto/Realizado/Cancelado), diálogo de cancelamento, Caixa, Relatórios, Usuários/Papéis.
+
+
+## Publicação das Fases 2 e 3 (29/10/2026)
+Backup `C:devackups-firmusirmus-prod-20261029-0419-pre-fase2-3.json`; `prisma migrate deploy` aplicou 20261029120000_add_aquisicao_cancelada (15 migrações ok, 32 lançamentos intactos); push `cdffb93`; API (Railway) SUCCESS; site (Vercel) já com Poppins.
+
+## Fase 4 — Levantamento (resumo)
+- **Cards atuais**: Imóveis em prospecção = `propertiesCount` (conta TODOS os imóveis da empresa; por isso mostra 6 = 3 adquiridos + 2 em análise + 1 reprovado). Usuários/Papéis são administrativos.
+- **Avaliação Caixa** = `Property.valorAvaliacao` (obrigatório). Em produção nenhum imóvel está sem avaliação; um da empresa demo tem valor 1 (R$ 1,00).
+- **P2**: aportes de investidores (`PropertyInvestor.valorAporte`) NÃO geram lançamento no Caixa (o módulo de investidores não toca em transações); hoje há 0 participações. Saldo consolidado = saldo inicial + realizados e continua assim.
+- **P3**: não existe status/etapa pós-aquisição. Existem estados paralelos: `LegalCase.status` (AGUARDANDO_PAGAMENTO…DESOCUPADO), tarefas de reforma por `RenovationStage`, `Sale.status`, e `Property.status` = ADQUIRIDA/VENDIDA. Criar `etapaPosAquisicao` (opcional, sem preenchimento automático).
+- **Data de aquisição NÃO existe**: `Acquisition` só tem `createdAt` (data do registro). Ex.: F 201 tem gastos desde fevereiro mas o registro é de 25/08. "Dias em carteira" pela data do registro seria enganoso.
+- **Dados de conferência**: F 201 despesas realizadas R$ 57.260,00 ✓; H 02 R$ 57.800,00 ✓; B 102 R$ 64.000,76. Não há nenhum lançamento PREVISTO em produção → "custos até a venda" = R$ 0,00 hoje.
+- **Alertas com dado real hoje**: processo jurídico aguardando pagamento (3), lançamentos sem "Pago por", adquiridos sem etapa. Sem dado hoje (entram quando existirem): prazos/audiências (0 eventos), orçamento de reforma (todos os valores 0), parcelas de venda.
+- Valores esperados (empresa Firmus) para conferir após a implementação: capital investido R$ 179.060,76; avaliação R$ 373.000,00; resultado projetado R$ 193.939,24; margem ≈ 52,0%; ROI ≈ 108,3%.
 
