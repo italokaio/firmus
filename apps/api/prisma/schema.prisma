@@ -164,6 +164,14 @@ enum ProspectStatus {
   AQUISICAO_CANCELADA
 }
 
+/// Etapas do funil depois da aquisição (dashboard). Preenchidas manualmente.
+enum PostAcquisitionStage {
+  DESOCUPACAO_DOCUMENTACAO
+  REFORMA
+  A_VENDA
+  VENDIDO
+}
+
 /// Oportunidade de imóvel de leilão — agregado central do sistema.
 model Property {
   id        String   @id @default(uuid())
@@ -215,6 +223,9 @@ model Property {
   /// imóvel. Preenchido manualmente ou automaticamente ao vincular um Broker
   /// na Venda (ver SalesService).
   corretorResponsavelId String?
+
+  /// Etapa do imóvel depois de adquirido. Opcional e SEM preenchimento automático — o usuário informa.
+  etapaPosAquisicao   PostAcquisitionStage?
 
   /// Cancelamento da aquisição (status AQUISICAO_CANCELADA) — data, autor e motivo obrigatórios no fluxo.
   canceladoEm         DateTime?
@@ -398,6 +409,8 @@ model Acquisition {
   propertyId             String        @unique
   valorLance             Decimal       @db.Decimal(14, 2)
   formaPagamento         PaymentMethod
+  /// Data em que o imóvel foi de fato adquirido (opcional; `createdAt` é só a data do cadastro).
+  dataAquisicao          DateTime?
   custasCartorarias      Decimal       @default(0) @db.Decimal(14, 2)
   itbi                   Decimal       @default(0) @db.Decimal(14, 2)
   registro               Decimal       @default(0) @db.Decimal(14, 2)

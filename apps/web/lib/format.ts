@@ -28,3 +28,8 @@ export function formatBytes(bytes: number): string {
   }
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
+
+/** Percentual vindo da API como string (ex.: "51.99" → "52,0%"). */
+export function formatPercent(value: string | number): string {
+  return `${Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}

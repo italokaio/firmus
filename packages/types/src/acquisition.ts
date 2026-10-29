@@ -22,6 +22,8 @@ const optionalMoney = z.preprocess(
 export const createAcquisitionSchema = z.object({
   valorLance: money,
   formaPagamento: z.enum(PAYMENT_METHODS),
+  /** Data em que o imóvel foi adquirido (opcional). */
+  dataAquisicao: z.string().datetime().nullable().optional(),
   custasCartorarias: optionalMoney,
   itbi: optionalMoney,
   registro: optionalMoney,
@@ -43,6 +45,7 @@ export interface AcquisitionDto {
   propertyId: string;
   valorLance: string;
   formaPagamento: PaymentMethod;
+  dataAquisicao: string | null;
   custasCartorarias: string;
   itbi: string;
   registro: string;

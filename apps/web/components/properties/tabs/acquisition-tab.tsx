@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiClient, ApiError } from "@/lib/api/client";
-import { formatCurrency } from "@/lib/format";
+import { formatCalendarDate, formatCurrency } from "@/lib/format";
 
 const COST_LABELS: Array<[keyof CreateAcquisitionInput, string]> = [
   ["custasCartorarias", "Custas cartorárias"],
@@ -77,6 +77,10 @@ export function AcquisitionTab({ propertyId, canManage }: { propertyId: string; 
         <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
           <InfoItem label="Valor do lance" value={formatCurrency(acquisition.valorLance)} />
           <InfoItem label="Forma de pagamento" value={PAYMENT_METHOD_LABELS[acquisition.formaPagamento]} />
+          <InfoItem
+            label="Data da aquisição"
+            value={acquisition.dataAquisicao ? formatCalendarDate(acquisition.dataAquisicao) : "—"}
+          />
           {COST_LABELS.map(([field, label]) => (
             <InfoItem key={field} label={label} value={formatCurrency(acquisition[field] as string)} />
           ))}
@@ -117,6 +121,8 @@ function AcquisitionForm({
       ? {
           valorLance: acquisition.valorLance,
           formaPagamento: acquisition.formaPagamento,
+          // O input type=date trabalha com AAAA-MM-DD; setValueAs converte de volta ao enviar.
+          dataAquisicao: acquisition.dataAquisicao ? acquisition.dataAquisicao.slice(0, 10) : undefined,
           custasCartorarias: acquisition.custasCartorarias,
           itbi: acquisition.itbi,
           registro: acquisition.registro,
@@ -165,6 +171,13 @@ function AcquisitionForm({
                 </option>
               ))}
             </Select>
+          </Field>
+
+          <Field label="Data da aquisição (opcional)" error={errors.dataAquisicao?.message}>
+            <Input
+              type="date"
+              {...register("dataAquisicao", { setValueAs: (v: string) => (v ? `${v}T00:00:00.000Z` : null) })}
+            />
           </Field>
 
           {COST_LABELS.map(([field, label]) => (

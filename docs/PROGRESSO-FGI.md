@@ -7,7 +7,7 @@
 | 1 | Lançamentos: edição, histórico, "Pago por", Excel | **Concluída e publicada em 28/10/2026** (migrações aplicadas em produção, OK do usuário) |
 | 2 | Cancelamento de aquisição | **Concluída e publicada em 29/10/2026** (migração `add_aquisicao_cancelada` aplicada em produção) |
 | 3 | Identidade visual Firmus | **Publicada em 29/10/2026** (aguardando conferência visual do usuário) |
-| 4 | Novo dashboard | **Levantamento feito — aguardando OK do plano** |
+| 4 | Novo dashboard | **Implementada e commitada — aguardando OK final** (NÃO publicada; migração pendente em produção) |
 | 5 | DRE do imóvel detalhada | Pendente |
 | 6 | Relatórios com a marca | Pendente |
 
@@ -111,4 +111,14 @@ Backup `C:devackups-firmusirmus-prod-20261029-0419-pre-fase2-3.json`; `prisma 
 - **Dados de conferência**: F 201 despesas realizadas R$ 57.260,00 ✓; H 02 R$ 57.800,00 ✓; B 102 R$ 64.000,76. Não há nenhum lançamento PREVISTO em produção → "custos até a venda" = R$ 0,00 hoje.
 - **Alertas com dado real hoje**: processo jurídico aguardando pagamento (3), lançamentos sem "Pago por", adquiridos sem etapa. Sem dado hoje (entram quando existirem): prazos/audiências (0 eventos), orçamento de reforma (todos os valores 0), parcelas de venda.
 - Valores esperados (empresa Firmus) para conferir após a implementação: capital investido R$ 179.060,76; avaliação R$ 373.000,00; resultado projetado R$ 193.939,24; margem ≈ 52,0%; ROI ≈ 108,3%.
+
+
+## Fase 4 — o que foi feito
+- **Migração** `20261029180000_add_etapa_pos_aquisicao` (só adiciona): enum `PostAcquisitionStage`, `properties.etapaPosAquisicao` (opcional, manual), `acquisitions.dataAquisicao` (opcional). **Ainda não aplicada em produção.**
+- **API**: `GET /dashboard/portfolio?month=AAAA-MM` (`DASHBOARD_VIEW`; o `/dashboard/summary` antigo continua existindo, sem uso). Cálculos em funções puras (`portfolio-metrics.ts`): R2 custo incorrido, R3 custos até a venda, R4 resultado projetado, margem, ROI, funil, caixa do mês, saídas previstas 90 dias, origem do capital, alertas.
+- **Decisões aplicadas**: margem = resultado ÷ avaliação; ROI = resultado ÷ (custo + previstos); "adquiridos" = status ADQUIRIDA (vendidos só no funil, fora da projeção); cancelados/reprovados fora do funil e da projeção (só contagem; cancelados mostram o resultado realizado); sem avaliação (nula ou 0) fora da projeção, sinalizado, mas o dinheiro gasto conta no capital investido; lançamentos CANCELADO fora de tudo; dashboard continua por empresa (sem escopo por usuário); aportes registrados só informativos (não entram no saldo — P2); P1 desligada.
+- **Dias em carteira**: só com a "Data da aquisição" (campo novo, opcional, na aba Aquisição); sem data mostra "—". Nunca estimado.
+- **Frontend**: seletor de mês, "Gerar relatório" (Resumo do portfólio em PDF), 4 KPIs (Saldo consolidado saiu; Resultado projetado em destaque), funil, cascata da projeção, caixa, origem do capital, tabela de adquiridos ordenável (rolagem horizontal no celular) e alertas. Removidos: usuários ativos, papéis, gráfico por prioridade (virou coluna), "Próximos módulos". Menu agrupado em Operação / Financeiro / Administração. Etapa pós-aquisição editável no formulário do imóvel (quando Adquirida).
+- **Alertas** (só com dado real): prazos/audiências vencidos e próximos 7 dias, tarefas de reforma atrasadas, reforma acima do orçamento, parcelas de venda vencidas, previstos com data vencida, processos aguardando pagamento, adquiridos sem avaliação/sem etapa, despesas sem "Pago por".
+- **Testes**: 96 na API (21 novos do dashboard). Conferência com dados reais da Firmus (a partir do backup): capital R$ 179.060,76; avaliação R$ 373.000,00; resultado R$ 193.939,24; margem 51,99%; ROI 108,31%; F 201 custo R$ 57.260,00. Build de produção OK.
 

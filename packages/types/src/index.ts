@@ -15,3 +15,4 @@ export * from "./investors";
 export * from "./sales";
 export * from "./reports";
 export * from "./print-theme";
+export * from "./dashboard";

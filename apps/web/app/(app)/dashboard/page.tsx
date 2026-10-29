@@ -1,179 +1,149 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Home, Shield, Users, Wallet } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import {
-  PRIORITY_LABELS,
-  PROSPECT_STATUS_LABELS,
-  type FinanceSummaryDto,
-  type Priority,
-  type ProspectStatus,
-} from "@leilao-erp/types";
-import { KpiCard } from "@/components/ui/kpi-card";
+import * as React from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { FileText, Home, Loader2, Percent, Scale, Wallet } from "lucide-react";
+import { PERMISSIONS, type PortfolioDashboardDto, type ReportDto } from "@leilao-erp/types";
+import { AcquiredTable } from "@/components/dashboard/acquired-table";
+import { AlertsCard, CapitalOriginCard, CashCard, FunnelCard } from "@/components/dashboard/portfolio-sections";
+import { ProjectionWaterfall } from "@/components/dashboard/projection-waterfall";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiClient } from "@/lib/api/client";
+import { Input } from "@/components/ui/input";
+import { KpiCard } from "@/components/ui/kpi-card";
+import { ApiError, apiClient } from "@/lib/api/client";
+import { formatCurrency, formatPercent } from "@/lib/format";
+import { usePermission } from "@/lib/hooks/use-permission";
 import { useAuthStore } from "@/lib/stores/auth-store";
-import { formatCurrency } from "@/lib/format";
 
-interface DashboardSummary {
-  usersCount: number;
-  rolesCount: number;
-  propertiesCount: number;
-  propertiesByStatus: Array<{ status: ProspectStatus; count: number }>;
-  propertiesByPriority: Array<{ prioridade: Priority; count: number }>;
-  finance: FinanceSummaryDto;
+const currentMonth = () => new Date().toISOString().slice(0, 7);
+
+function monthLabel(month: string): string {
+  return new Date(`${month}-01T00:00:00Z`).toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
-
-const PRIORITY_COLORS: Record<Priority, string> = {
-  BAIXA: "var(--color-chart-4)",
-  MEDIA: "var(--color-chart-1)",
-  ALTA: "var(--color-chart-3)",
-  URGENTE: "var(--color-negative)",
-};
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
-  const { data, isLoading } = useQuery({
-    queryKey: ["dashboard-summary"],
-    queryFn: () => apiClient.get<DashboardSummary>("/dashboard/summary"),
+  const canGenerateReport = usePermission(PERMISSIONS.REPORTS_MANAGE);
+  const [month, setMonth] = React.useState(currentMonth);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["dashboard-portfolio", month],
+    queryFn: () => apiClient.get<PortfolioDashboardDto>(`/dashboard/portfolio?month=${month}`),
+    enabled: /^\d{4}-\d{2}$/.test(month),
   });
 
-  const statusChartData = (data?.propertiesByStatus ?? []).map((row) => ({
-    label: PROSPECT_STATUS_LABELS[row.status],
-    count: row.count,
-  }));
-  const priorityChartData = (data?.propertiesByPriority ?? []).map((row) => ({
-    label: PRIORITY_LABELS[row.prioridade],
-    count: row.count,
-    prioridade: row.prioridade,
-  }));
+  const generateReport = useMutation({
+    mutationFn: () => apiClient.post<ReportDto>("/reports", { type: "PORTFOLIO_SUMMARY", format: "PDF" }),
+    onSuccess: (report) => window.open(report.downloadUrl, "_blank", "noopener"),
+  });
+
+  const carteira = data?.carteira;
+  const loading = isLoading || !data || !carteira;
+  const dash = "…";
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Olá, {user?.name?.split(" ")[0]}</h1>
-        <p className="text-sm text-muted-foreground">Visão geral do seu portfólio de leilões.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Olá, {user?.name?.split(" ")[0]}</h1>
+          <p className="text-sm capitalize text-muted-foreground">{monthLabel(month)}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            type="month"
+            aria-label="Mês de referência"
+            className="w-44"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+          />
+          {canGenerateReport && (
+            <Button variant="outline" disabled={generateReport.isPending} onClick={() => generateReport.mutate()}>
+              {generateReport.isPending ? <Loader2 className="animate-spin" /> : <FileText />}
+              Gerar relatório
+            </Button>
+          )}
+        </div>
       </div>
+
+      {generateReport.isError && (
+        <p className="text-sm text-negative">
+          {generateReport.error instanceof ApiError ? generateReport.error.message : "Não foi possível gerar o relatório."}
+        </p>
+      )}
+      {isError && <p className="text-sm text-negative">Não foi possível carregar o dashboard.</p>}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          label="Imóveis em prospecção"
-          value={isLoading ? "…" : String(data?.propertiesCount ?? 0)}
+          label="Imóveis adquiridos"
+          value={loading ? dash : String(data.counts.adquiridos)}
+          subtitle={loading ? undefined : `de ${data.counts.cadastrados} cadastrados · ${data.counts.emAnalise} em análise`}
           icon={Home}
         />
         <KpiCard
-          label="Usuários ativos"
-          value={isLoading ? "…" : String(data?.usersCount ?? 0)}
-          icon={Users}
+          label="Capital investido"
+          value={loading ? dash : formatCurrency(carteira.capitalInvestido)}
+          subtitle="Despesas realizadas nos adquiridos"
+          icon={Wallet}
         />
         <KpiCard
-          label="Papéis configurados"
-          value={isLoading ? "…" : String(data?.rolesCount ?? 0)}
-          icon={Shield}
+          label="Avaliação Caixa da carteira"
+          value={loading ? dash : formatCurrency(carteira.avaliacao)}
+          subtitle={
+            loading
+              ? undefined
+              : carteira.imoveisSemAvaliacao > 0
+                ? `${carteira.imoveisNaProjecao} imóvel(is) · ${carteira.imoveisSemAvaliacao} sem avaliação`
+                : `${carteira.imoveisNaProjecao} imóvel(is)`
+          }
+          icon={Scale}
         />
         <KpiCard
           highlight
-          label="Saldo consolidado"
-          value={isLoading ? "…" : formatCurrency(data?.finance.saldoConsolidado ?? "0")}
-          icon={Wallet}
+          label="Resultado projetado"
+          value={loading ? dash : formatCurrency(carteira.resultadoProjetado)}
+          subtitle={
+            loading
+              ? undefined
+              : `Margem ${carteira.margemPercentual ? formatPercent(carteira.margemPercentual) : "—"} · ROI ${carteira.roiPercentual ? formatPercent(carteira.roiPercentual) : "—"}`
+          }
+          icon={Percent}
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <KpiCard
-          label="Receitas realizadas no mês"
-          value={isLoading ? "…" : formatCurrency(data?.finance.totalReceitasMes ?? "0")}
-          icon={Wallet}
-        />
-        <KpiCard
-          label="Despesas realizadas no mês"
-          value={isLoading ? "…" : formatCurrency(data?.finance.totalDespesasMes ?? "0")}
-          icon={Wallet}
-        />
-      </div>
+      {data && <FunnelCard data={data} />}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Imóveis por status</CardTitle>
-            <CardDescription>Distribuição do funil de prospecção atual.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {statusChartData.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum imóvel cadastrado ainda.</p>
-            ) : (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={statusChartData} layout="vertical" margin={{ left: 24 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-border)" />
-                    <XAxis type="number" allowDecimals={false} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} />
-                    <YAxis
-                      type="category"
-                      dataKey="label"
-                      width={140}
-                      tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: 8,
-                        color: "var(--color-card-foreground)",
-                      }}
-                    />
-                    <Bar dataKey="count" name="Imóveis" fill="var(--color-chart-1)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {data && carteira && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Projeção de resultado</CardTitle>
+              <CardDescription>
+                Avaliação Caixa − custo incorrido − custos até a venda. Considera só adquiridos com avaliação
+                {carteira.imoveisSemAvaliacao > 0 ? ` (${carteira.imoveisSemAvaliacao} fora por não ter avaliação)` : ""}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ProjectionWaterfall carteira={carteira} />
+              {Number(carteira.custosAteVenda) === 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Nenhum custo previsto lançado: lance os custos até a venda (documentação, jurídico, reforma,
+                  condomínio…) como lançamentos “Previsto” para refinar o resultado.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+          <CashCard data={data} monthLabel={monthLabel(month)} />
+        </div>
+      )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Imóveis por prioridade</CardTitle>
-            <CardDescription>Onde a atenção deveria estar concentrada agora.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {priorityChartData.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum imóvel cadastrado ainda.</p>
-            ) : (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={priorityChartData} margin={{ top: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                    <XAxis dataKey="label" tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} />
-                    <YAxis allowDecimals={false} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: 8,
-                        color: "var(--color-card-foreground)",
-                      }}
-                    />
-                    <Bar dataKey="count" name="Imóveis" radius={[4, 4, 0, 0]}>
-                      {priorityChartData.map((row) => (
-                        <Cell key={row.prioridade} fill={PRIORITY_COLORS[row.prioridade]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Próximos módulos</CardTitle>
-          <CardDescription>
-            IA e notificações avançadas chegam na próxima fase, conforme o roadmap.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      {data && <CapitalOriginCard origins={data.origemCapital} />}
+      {data && <AcquiredTable rows={data.adquiridos} />}
+      {data && <AlertsCard alerts={data.alertas} />}
     </div>
   );
 }

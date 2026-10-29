@@ -16,6 +16,8 @@ import {
   OPERATION_TYPES,
   PRIORITIES,
   PRIORITY_LABELS,
+  POST_ACQUISITION_STAGES,
+  POST_ACQUISITION_STAGE_LABELS,
   PROSPECT_STATUS_LABELS,
   createPropertySchema,
   statusesForOperationType,
@@ -247,6 +249,21 @@ export function PropertyForm({ defaultValues, onSubmit, submitLabel, hideStatus 
                 {availableStatuses.map((status) => (
                   <option key={status} value={status}>
                     {PROSPECT_STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          {watch("status") === "ADQUIRIDA" && (
+            <Field label="Etapa pós-aquisição" error={errors.etapaPosAquisicao?.message}>
+              <Select
+                {...register("etapaPosAquisicao", { setValueAs: (v: string) => (v ? v : null) })}
+                defaultValue={defaultValues?.etapaPosAquisicao ?? ""}
+              >
+                <option value="">Etapa não definida</option>
+                {POST_ACQUISITION_STAGES.map((stage) => (
+                  <option key={stage} value={stage}>
+                    {POST_ACQUISITION_STAGE_LABELS[stage]}
                   </option>
                 ))}
               </Select>

@@ -18,6 +18,15 @@ export const PROSPECT_STATUSES = [
   "AQUISICAO_CANCELADA",
 ] as const;
 
+export const POST_ACQUISITION_STAGES = ["DESOCUPACAO_DOCUMENTACAO", "REFORMA", "A_VENDA", "VENDIDO"] as const;
+export type PostAcquisitionStage = (typeof POST_ACQUISITION_STAGES)[number];
+export const POST_ACQUISITION_STAGE_LABELS: Record<PostAcquisitionStage, string> = {
+  DESOCUPACAO_DOCUMENTACAO: "Desocupação / Documentação",
+  REFORMA: "Reforma",
+  A_VENDA: "À venda",
+  VENDIDO: "Vendido",
+};
+
 export type OperationType = (typeof OPERATION_TYPES)[number];
 export type AuctionType = (typeof AUCTION_TYPES)[number];
 export type OccupancyStatus = (typeof OCCUPANCY_STATUSES)[number];
@@ -137,6 +146,8 @@ const propertyBaseSchema = z.object({
 
   status: z.enum(PROSPECT_STATUSES_SELECTABLE as unknown as [ProspectStatus, ...ProspectStatus[]]).default("NOVA_OPORTUNIDADE"),
   prioridade: z.enum(PRIORITIES).default("MEDIA"),
+  /** Etapa depois de adquirido — opcional, preenchida manualmente (sem automação). */
+  etapaPosAquisicao: z.enum(POST_ACQUISITION_STAGES).nullable().optional(),
 
   tagIds: z.array(z.string().uuid()).default([]),
 });
@@ -225,6 +236,7 @@ export interface PropertyDto {
   observacoes: string | null;
   status: ProspectStatus;
   prioridade: Priority;
+  etapaPosAquisicao: PostAcquisitionStage | null;
   createdByUserId: string | null;
   corretorResponsavelId: string | null;
   /** Preenchidos quando status = AQUISICAO_CANCELADA. */
