@@ -29,6 +29,7 @@ export class DashboardService {
             prioridade: true,
             valorAvaliacao: true,
             etapaPosAquisicao: true,
+            canceladoEm: true,
             acquisition: { select: { dataAquisicao: true } },
           },
         }),
@@ -41,7 +42,7 @@ export class DashboardService {
             origemTipo: true,
             investidorId: true,
             investidor: { select: { name: true } },
-            category: { select: { type: true } },
+            category: { select: { type: true, name: true } },
             financeAccount: { select: { propertyId: true } },
           },
         }),
@@ -82,6 +83,7 @@ export class DashboardService {
       avaliacao: p.valorAvaliacao,
       etapa: p.etapaPosAquisicao,
       dataAquisicao: p.acquisition?.dataAquisicao ?? null,
+      canceladoEm: p.canceladoEm,
     }));
     const metricTransactions: MetricTransaction[] = transactions.map((tx) => ({
       propertyId: tx.financeAccount.propertyId,
@@ -89,6 +91,7 @@ export class DashboardService {
       status: tx.status,
       date: tx.date,
       categoryType: tx.category.type,
+      categoryName: tx.category.name,
       origemTipo: tx.origemTipo,
       investidorId: tx.investidorId,
       investidorName: tx.investidor?.name ?? null,

@@ -1,36 +1,31 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import {
-  LEGAL_CASE_STATUS_LABELS,
-  PAYMENT_METHOD_LABELS,
-  PRIORITY_LABELS,
-  PROSPECT_STATUS_LABELS,
-  REPORT_TYPES_REQUIRING_PROPERTY,
-  SALE_STATUS_LABELS,
-  SIMULATOR_SCENARIO_TYPE_LABELS,
-  type CreateReportInput,
-  type ReportType,
-} from "@leilao-erp/types";
+import type { CreateReportInput, ReportType } from "@leilao-erp/types";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import { StorageService } from "../../infrastructure/storage/storage.service";
 import { AuditService } from "../audit/audit.service";
 import { AcquisitionService } from "../acquisition/acquisition.service";
-import { LegalService } from "../legal/legal.service";
+import { DashboardService } from "../dashboard/dashboard.service";
 import { FinanceService } from "../finance/finance.service";
-import { SimulatorService } from "../simulator/simulator.service";
+import { PropertyStatementService } from "../finance/property-statement.service";
+import { LegalService } from "../legal/legal.service";
 import { SalesService } from "../sales/sales.service";
+import { SimulatorService } from "../simulator/simulator.service";
+import type { ReportContext } from "./builders/context";
+import { buildDossierContent } from "./builders/dossier";
+import { buildDreContent } from "./builders/dre";
+import { buildInvestorContent } from "./builders/investor";
+import { buildPortfolioContent } from "./builders/portfolio";
+import { buildCompanyCashflowContent, buildSalesPipelineContent } from "./builders/pipeline-and-cashflow";
+import { buildStatementReportContent } from "./builders/statement-report";
+import { renderReportExcel } from "./excel-renderer";
+import { renderReportPdf } from "./pdf-renderer";
 import type { ReportContent } from "./report-content.types";
-import { renderReportExcel, renderReportPdf } from "./report-renderers";
 
-function formatBRL(value: string | number): string {
-  return Number(value).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-}
-
-function formatDateBR(value: string | Date): string {
-  return new Date(value).toLocaleDateString("pt-BR");
+interface BuiltReport {
+  content: ReportContent;
+  /** Texto de contexto para o histórico (investidor, período, filtros...). */
+  contexto?: string;
 }
 
 @Injectable()
@@ -42,6 +37,8 @@ export class ReportsService {
     private readonly acquisitionService: AcquisitionService,
     private readonly legalService: LegalService,
     private readonly financeService: FinanceService,
+    private readonly statementService: PropertyStatementService,
+    private readonly dashboardService: DashboardService,
     private readonly simulatorService: SimulatorService,
     private readonly salesService: SalesService,
   ) {}
@@ -59,14 +56,26 @@ export class ReportsService {
   }
 
   async generateReport(companyId: string, generatedById: string, input: CreateReportInput) {
-    if (REPORT_TYPES_REQUIRING_PROPERTY.includes(input.type) && !input.propertyId) {
-      throw new BadRequestException("Este tipo de relatório exige um imóvel selecionado");
-    }
+    // Imóvel e investidor, quando informados, precisam ser da empresa (os construtores revalidam).
     if (input.propertyId) await this.assertPropertyBelongsToCompany(companyId, input.propertyId);
 
-    const content = await this.buildContent(companyId, input.type, input.propertyId);
-    const buffer =
-      input.format === "PDF" ? await renderReportPdf(content) : await renderReportExcel(content);
+    const user = await this.prisma.user.findUnique({ where: { id: generatedById }, select: { name: true } });
+    const ctx: ReportContext = {
+      prisma: this.prisma,
+      financeService: this.financeService,
+      statementService: this.statementService,
+      dashboardService: this.dashboardService,
+      acquisitionService: this.acquisitionService,
+      legalService: this.legalService,
+      simulatorService: this.simulatorService,
+      salesService: this.salesService,
+      companyId,
+      generatedBy: user?.name ?? "Usuário",
+      generatedAt: new Date(),
+    };
+
+    const { content, contexto } = await this.buildContent(ctx, input.type, input);
+    const buffer = input.format === "PDF" ? await renderReportPdf(content) : await renderReportExcel(content);
     const extension = input.format === "PDF" ? "pdf" : "xlsx";
     const mimeType =
       input.format === "PDF"
@@ -75,12 +84,14 @@ export class ReportsService {
     const storageKey = `companies/${companyId}/reports/${randomUUID()}.${extension}`;
     await this.storageService.uploadBuffer(storageKey, buffer, mimeType);
 
+    const filters = this.filtersToStore(input, contexto);
     const report = await this.prisma.report.create({
       data: {
         companyId,
         type: input.type,
         format: input.format,
         propertyId: input.propertyId,
+        filters: filters ?? undefined,
         storageKey,
         generatedById,
       },
@@ -94,7 +105,7 @@ export class ReportsService {
       entityType: "Report",
       entityId: report.id,
       action: "CREATE",
-      after: { type: input.type, format: input.format, propertyId: input.propertyId },
+      after: { type: input.type, format: input.format, propertyId: input.propertyId, filters },
     });
 
     return this.attachDownloadUrl(report);
@@ -113,267 +124,49 @@ export class ReportsService {
     });
   }
 
-  private async buildContent(
-    companyId: string,
-    type: ReportType,
-    propertyId: string | undefined,
-  ): Promise<ReportContent> {
+  private async buildContent(ctx: ReportContext, type: ReportType, input: CreateReportInput): Promise<BuiltReport> {
     switch (type) {
       case "PORTFOLIO_SUMMARY":
-        return this.buildPortfolioSummary(companyId);
+        return { content: await buildPortfolioContent(ctx) };
       case "PROPERTY_DETAIL":
-        return this.buildPropertyDetail(companyId, propertyId!);
+        return { content: await buildDossierContent(ctx, input.propertyId!) };
       case "FINANCIAL_DRE":
-        return this.buildFinancialDre(companyId, propertyId!);
+        return { content: await buildDreContent(ctx, input.propertyId!) };
       case "FINANCIAL_CASHFLOW_GERAL":
-        return this.buildCompanyCashflow(companyId);
+        return { content: await buildCompanyCashflowContent(ctx) };
       case "SALES_PIPELINE":
-        return this.buildSalesPipeline(companyId);
+        return { content: await buildSalesPipelineContent(ctx) };
+      case "INVESTOR_REPORT":
+        return buildInvestorContent(ctx, {
+          investorId: input.investorId!,
+          propertyId: input.propertyId,
+          from: input.from,
+          to: input.to,
+        });
+      case "TRANSACTION_STATEMENT":
+        return buildStatementReportContent(ctx, {
+          propertyId: input.propertyId,
+          accountId: input.accountId,
+          categoryId: input.categoryId,
+          status: input.status,
+          origem: input.origem,
+          from: input.from,
+          to: input.to,
+        });
     }
   }
 
-  private async buildPortfolioSummary(companyId: string): Promise<ReportContent> {
-    const properties = await this.prisma.property.findMany({
-      where: { companyId },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return {
-      title: "Resumo do Portfólio",
-      subtitle: `Gerado em ${formatDateBR(new Date())} · ${properties.length} imóvel(is)`,
-      sections: [
-        {
-          kind: "table",
-          heading: "Imóveis",
-          columns: ["Origem", "Cidade/UF", "Status", "Prioridade", "Avaliação"],
-          rows: properties.map((p) => [
-            p.origem,
-            `${p.cidade}/${p.estado}`,
-            PROSPECT_STATUS_LABELS[p.status],
-            PRIORITY_LABELS[p.prioridade],
-            formatBRL(p.valorAvaliacao.toString()),
-          ]),
-        },
-      ],
-    };
+  /** Guarda só os filtros que existem, com o texto de contexto para o histórico. */
+  private filtersToStore(input: CreateReportInput, contexto?: string) {
+    const { investorId, from, to, accountId, categoryId, status, origem } = input;
+    const stored = { investorId, from, to, accountId, categoryId, status, origem };
+    const defined = Object.fromEntries(Object.entries(stored).filter(([, value]) => value !== undefined));
+    if (Object.keys(defined).length === 0 && !contexto) return null;
+    return { ...defined, contexto: contexto ?? "" };
   }
 
-  private async buildPropertyDetail(companyId: string, propertyId: string): Promise<ReportContent> {
-    const property = await this.prisma.property.findFirst({ where: { id: propertyId, companyId } });
-    if (!property) throw new NotFoundException("Imóvel não encontrado");
-
-    const [acquisition, legalCase, dre, simulatorOverview, sale] = await Promise.all([
-      this.acquisitionService.getByProperty(companyId, propertyId),
-      this.legalService.getByProperty(companyId, propertyId),
-      this.financeService.getDre(companyId, propertyId),
-      this.simulatorService.getOverview(companyId, propertyId),
-      this.salesService.getSaleByProperty(companyId, propertyId),
-    ]);
-
-    const content: ReportContent = {
-      title: `Dossiê — ${property.origem}`,
-      subtitle: `${property.endereco} · ${property.cidade}/${property.estado} · Gerado em ${formatDateBR(new Date())}`,
-      sections: [
-        {
-          kind: "kv",
-          heading: "Visão geral",
-          rows: [
-            ["Status", PROSPECT_STATUS_LABELS[property.status]],
-            ["Prioridade", PRIORITY_LABELS[property.prioridade]],
-            ["Área", `${property.area.toString()} m²`],
-            ["Avaliação", formatBRL(property.valorAvaliacao.toString())],
-          ],
-        },
-      ],
-    };
-
-    if (acquisition) {
-      content.sections.push({
-        kind: "kv",
-        heading: "Aquisição",
-        rows: [
-          ["Valor do lance", formatBRL(acquisition.valorLance.toString())],
-          ["Forma de pagamento", PAYMENT_METHOD_LABELS[acquisition.formaPagamento]],
-          ["Custo total", formatBRL(acquisition.custoTotal)],
-          ["Capital investido", formatBRL(acquisition.capitalInvestido)],
-        ],
-      });
-    }
-
-    if (legalCase) {
-      content.sections.push({
-        kind: "kv",
-        heading: "Jurídico",
-        rows: [
-          ["Status", LEGAL_CASE_STATUS_LABELS[legalCase.status]],
-          ["Advogado responsável", legalCase.advogadoResponsavel ?? "—"],
-          ["Custas processuais", formatBRL(legalCase.custasProcessuais.toString())],
-          ["Prazos em aberto", String(legalCase.events.filter((e) => e.status === "PENDENTE").length)],
-        ],
-      });
-    }
-
-    content.sections.push({
-      kind: "kv",
-      heading: "Financeiro (DRE)",
-      rows: [
-        ["Receitas realizadas", formatBRL(dre.totalReceitas)],
-        ["Despesas realizadas", formatBRL(dre.totalDespesas)],
-        ["Lucro líquido", formatBRL(dre.lucroLiquido)],
-        ["Margem", dre.margemPercentual ? `${dre.margemPercentual}%` : "—"],
-      ],
-    });
-
-    if (simulatorOverview.scenarios.length > 0) {
-      content.sections.push({
-        kind: "table",
-        heading: "Cenários do simulador",
-        columns: ["Tipo", "Capital investido", "Venda estimada", "ROI", "TIR anual", "VPL"],
-        rows: simulatorOverview.scenarios.map((s) => [
-          SIMULATOR_SCENARIO_TYPE_LABELS[s.tipo],
-          formatBRL(s.capitalInvestido.toString()),
-          formatBRL(s.valorVendaEstimado.toString()),
-          `${s.roi}%`,
-          s.tirAnual ? `${s.tirAnual}%` : "—",
-          formatBRL(s.vpl),
-        ]),
-      });
-    }
-
-    if (sale) {
-      content.sections.push({
-        kind: "kv",
-        heading: "Venda",
-        rows: [
-          ["Status", SALE_STATUS_LABELS[sale.status]],
-          ["Valor pedido", formatBRL(sale.valorPedido.toString())],
-          ["Corretor", sale.broker?.name ?? "—"],
-          ["Valor do contrato", sale.contract ? formatBRL(sale.contract.valorVenda.toString()) : "—"],
-          [
-            "Parcelas pendentes",
-            String(sale.receivables.filter((r: { status: string }) => r.status === "PENDENTE").length),
-          ],
-        ],
-      });
-    }
-
-    return content;
-  }
-
-  private async buildFinancialDre(companyId: string, propertyId: string): Promise<ReportContent> {
-    const property = await this.prisma.property.findFirst({ where: { id: propertyId, companyId } });
-    if (!property) throw new NotFoundException("Imóvel não encontrado");
-
-    const [dre, cashflow] = await Promise.all([
-      this.financeService.getDre(companyId, propertyId),
-      this.financeService.getCashflow(companyId, propertyId),
-    ]);
-
-    return {
-      title: `DRE — ${property.origem}`,
-      subtitle: `Gerado em ${formatDateBR(new Date())}`,
-      sections: [
-        {
-          kind: "kv",
-          heading: "Resumo",
-          rows: [
-            ["Receitas realizadas", formatBRL(dre.totalReceitas)],
-            ["Despesas realizadas", formatBRL(dre.totalDespesas)],
-            ["Lucro líquido", formatBRL(dre.lucroLiquido)],
-            ["Margem", dre.margemPercentual ? `${dre.margemPercentual}%` : "—"],
-          ],
-        },
-        {
-          kind: "table",
-          heading: "Receitas por categoria",
-          columns: ["Categoria", "Total"],
-          rows: dre.receitas.map((r) => [r.categoryName, formatBRL(r.total)]),
-        },
-        {
-          kind: "table",
-          heading: "Despesas por categoria",
-          columns: ["Categoria", "Total"],
-          rows: dre.despesas.map((d) => [d.categoryName, formatBRL(d.total)]),
-        },
-        {
-          kind: "table",
-          heading: "Fluxo de caixa mensal",
-          columns: ["Mês", "Previsto entradas", "Previsto saídas", "Realizado entradas", "Realizado saídas", "Saldo"],
-          rows: cashflow.map((row) => [
-            row.month,
-            formatBRL(row.previstoEntradas),
-            formatBRL(row.previstoSaidas),
-            formatBRL(row.realizadoEntradas),
-            formatBRL(row.realizadoSaidas),
-            formatBRL(row.saldoAcumulado),
-          ]),
-        },
-      ],
-    };
-  }
-
-  private async buildCompanyCashflow(companyId: string): Promise<ReportContent> {
-    const [summary, cashflow] = await Promise.all([
-      this.financeService.getSummary(companyId),
-      this.financeService.getCompanyCashflow(companyId),
-    ]);
-
-    return {
-      title: "Fluxo de Caixa Geral",
-      subtitle: `Todas as contas da empresa (geral, SPEs e imóveis) · Gerado em ${formatDateBR(new Date())}`,
-      sections: [
-        {
-          kind: "kv",
-          heading: "Resumo",
-          rows: [
-            ["Saldo consolidado", formatBRL(summary.saldoConsolidado)],
-            ["Receitas realizadas no mês", formatBRL(summary.totalReceitasMes)],
-            ["Despesas realizadas no mês", formatBRL(summary.totalDespesasMes)],
-          ],
-        },
-        {
-          kind: "table",
-          heading: "Fluxo de caixa mensal consolidado",
-          columns: ["Mês", "Previsto entradas", "Previsto saídas", "Realizado entradas", "Realizado saídas", "Saldo"],
-          rows: cashflow.map((row) => [
-            row.month,
-            formatBRL(row.previstoEntradas),
-            formatBRL(row.previstoSaidas),
-            formatBRL(row.realizadoEntradas),
-            formatBRL(row.realizadoSaidas),
-            formatBRL(row.saldoAcumulado),
-          ]),
-        },
-      ],
-    };
-  }
-
-  private async buildSalesPipeline(companyId: string): Promise<ReportContent> {
-    const sales = await this.salesService.listSales(companyId);
-
-    return {
-      title: "Pipeline de Vendas",
-      subtitle: `Gerado em ${formatDateBR(new Date())} · ${sales.length} venda(s)`,
-      sections: [
-        {
-          kind: "table",
-          heading: "Vendas",
-          columns: ["Imóvel", "Status", "Corretor", "Valor pedido", "Início", "Conclusão"],
-          rows: sales.map((s) => [
-            s.property.origem,
-            SALE_STATUS_LABELS[s.status],
-            s.broker?.name ?? "—",
-            formatBRL(s.valorPedido.toString()),
-            formatDateBR(s.dataInicio),
-            s.dataConclusao ? formatDateBR(s.dataConclusao) : "—",
-          ]),
-        },
-      ],
-    };
-  }
-
-  private async attachDownloadUrl<T extends { storageKey: string }>(report: T) {
-    const { storageKey, ...rest } = report;
+  private async attachDownloadUrl<T extends { storageKey?: string }>(report: T) {
+    const { storageKey, ...rest } = report as T & { storageKey: string };
     return { ...rest, downloadUrl: await this.storageService.createDownloadUrl(storageKey) };
   }
 

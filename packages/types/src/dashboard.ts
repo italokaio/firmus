@@ -36,6 +36,18 @@ export interface FunnelStepDto {
   count: number;
   /** Capital investido (despesas realizadas) nos imóveis desta etapa. */
   capital: string;
+  /** Soma da avaliação Caixa dos imóveis da etapa que têm avaliação. */
+  avaliacao: string;
+}
+
+export interface PortfolioCancelledRowDto {
+  id: string;
+  origem: string;
+  canceladoEm: string | null;
+  capitalInvestido: string;
+  reembolsos: string;
+  /** Receitas realizadas − despesas realizadas (negativo = perda). */
+  resultadoRealizado: string;
 }
 
 export interface PortfolioAcquiredRowDto {
@@ -77,7 +89,9 @@ export interface PortfolioDashboardDto {
   canceladosResultadoRealizado: string;
   funnel: FunnelStepDto[];
   /** Adquiridos sem etapa pós-aquisição definida (ficam fora dos passos do funil). */
-  semEtapa: { count: number; capital: string };
+  semEtapa: { count: number; capital: string; avaliacao: string };
+  /** Aquisições canceladas, com o resultado realizado de cada uma (informativo). */
+  cancelados: PortfolioCancelledRowDto[];
   carteira: {
     /** Despesas realizadas de todos os adquiridos (inclui os sem avaliação). */
     capitalInvestido: string;

@@ -4,6 +4,7 @@ import {
   FUNNEL_STEP_LABELS,
   type FunnelStepDto,
   type FunnelStepKey,
+  type PortfolioCancelledRowDto,
   type PortfolioAcquiredRowDto,
   type PortfolioAlertDto,
   type PortfolioDashboardDto,
@@ -12,7 +13,7 @@ import {
   type ProspectStatus,
   type TransactionOrigemTipo,
 } from "@leilao-erp/types";
-import { sumByOrigin } from "../finance/transaction-rules";
+import { isReimbursementCategory, sumByOrigin } from "../finance/transaction-rules";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ZERO = new Prisma.Decimal(0);
@@ -36,6 +37,8 @@ export interface MetricProperty {
   avaliacao: Prisma.Decimal | string | null;
   etapa: PostAcquisitionStage | null;
   dataAquisicao: Date | null;
+  /** Só preenchido quando a aquisição foi cancelada. */
+  canceladoEm?: Date | null;
 }
 
 export interface MetricTransaction {
@@ -45,6 +48,8 @@ export interface MetricTransaction {
   status: "PREVISTO" | "REALIZADO" | "CANCELADO";
   date: Date;
   categoryType: "RECEITA" | "DESPESA";
+  /** Nome da categoria (reconhece reembolsos de aquisição cancelada). */
+  categoryName?: string;
   origemTipo: TransactionOrigemTipo | null;
   investidorId: string | null;
   investidorName: string | null;
@@ -94,6 +99,7 @@ interface PropertyTotals {
   despesaRealizada: Prisma.Decimal; // R2 — custo incorrido
   receitaRealizada: Prisma.Decimal;
   despesaPrevista: Prisma.Decimal; // R3 — custos até a venda
+  reembolsos: Prisma.Decimal; // receitas realizadas na categoria de reembolso
 }
 
 export function computePortfolio(
@@ -112,7 +118,7 @@ export function computePortfolio(
   const totalsOf = (propertyId: string): PropertyTotals => {
     let entry = totals.get(propertyId);
     if (!entry) {
-      entry = { despesaRealizada: ZERO, receitaRealizada: ZERO, despesaPrevista: ZERO };
+      entry = { despesaRealizada: ZERO, receitaRealizada: ZERO, despesaPrevista: ZERO, reembolsos: ZERO };
       totals.set(propertyId, entry);
     }
     return entry;
@@ -122,19 +128,24 @@ export function computePortfolio(
     const entry = totalsOf(tx.propertyId);
     const amount = dec(tx.amount);
     if (tx.status === "REALIZADO" && tx.categoryType === "DESPESA") entry.despesaRealizada = entry.despesaRealizada.plus(amount);
-    else if (tx.status === "REALIZADO" && tx.categoryType === "RECEITA") entry.receitaRealizada = entry.receitaRealizada.plus(amount);
+    else if (tx.status === "REALIZADO" && tx.categoryType === "RECEITA") {
+      entry.receitaRealizada = entry.receitaRealizada.plus(amount);
+      if (tx.categoryName && isReimbursementCategory(tx.categoryName)) entry.reembolsos = entry.reembolsos.plus(amount);
+    }
     else if (tx.status === "PREVISTO" && tx.categoryType === "DESPESA") entry.despesaPrevista = entry.despesaPrevista.plus(amount);
   }
-  const of = (property: MetricProperty): PropertyTotals => totals.get(property.id) ?? { despesaRealizada: ZERO, receitaRealizada: ZERO, despesaPrevista: ZERO };
+  const of = (property: MetricProperty): PropertyTotals =>
+    totals.get(property.id) ?? { despesaRealizada: ZERO, receitaRealizada: ZERO, despesaPrevista: ZERO, reembolsos: ZERO };
 
   const adquiridos = properties.filter((p) => p.status === "ADQUIRIDA");
   const cancelados = properties.filter((p) => p.status === "AQUISICAO_CANCELADA");
 
   // ---------- Funil ----------
-  const stepAcc = new Map<FunnelStepKey, { count: number; capital: Prisma.Decimal }>(
-    FUNNEL_STEPS.map((key) => [key, { count: 0, capital: ZERO }]),
+  const stepAcc = new Map<FunnelStepKey, { count: number; capital: Prisma.Decimal; avaliacao: Prisma.Decimal }>(
+    FUNNEL_STEPS.map((key) => [key, { count: 0, capital: ZERO, avaliacao: ZERO }]),
   );
-  const semEtapa = { count: 0, capital: ZERO };
+  const semEtapa = { count: 0, capital: ZERO, avaliacao: ZERO };
+  const avaliacaoOf = (property: MetricProperty) => (hasAvaliacao(property) ? dec(property.avaliacao!) : ZERO);
   for (const property of properties) {
     const capital = of(property).despesaRealizada;
     let key: FunnelStepKey | null = null;
@@ -145,6 +156,7 @@ export function computePortfolio(
       else {
         semEtapa.count += 1;
         semEtapa.capital = semEtapa.capital.plus(capital);
+        semEtapa.avaliacao = semEtapa.avaliacao.plus(avaliacaoOf(property));
         continue;
       }
     }
@@ -152,12 +164,14 @@ export function computePortfolio(
     const acc = stepAcc.get(key)!;
     acc.count += 1;
     acc.capital = acc.capital.plus(capital);
+    acc.avaliacao = acc.avaliacao.plus(avaliacaoOf(property));
   }
   const funnel: FunnelStepDto[] = FUNNEL_STEPS.map((key) => ({
     key,
     label: FUNNEL_STEP_LABELS[key],
     count: stepAcc.get(key)!.count,
     capital: money(stepAcc.get(key)!.capital),
+    avaliacao: money(stepAcc.get(key)!.avaliacao),
   }));
 
   // ---------- Carteira / projeção (só adquiridos; R6 e R7) ----------
@@ -243,7 +257,20 @@ export function computePortfolio(
     },
     canceladosResultadoRealizado: money(canceladosResultado),
     funnel,
-    semEtapa: { count: semEtapa.count, capital: money(semEtapa.capital) },
+    semEtapa: { count: semEtapa.count, capital: money(semEtapa.capital), avaliacao: money(semEtapa.avaliacao) },
+    cancelados: cancelados
+      .map((p): PortfolioCancelledRowDto => {
+        const t = of(p);
+        return {
+          id: p.id,
+          origem: p.origem,
+          canceladoEm: p.canceladoEm ? p.canceladoEm.toISOString() : null,
+          capitalInvestido: money(t.despesaRealizada),
+          reembolsos: money(t.reembolsos),
+          resultadoRealizado: money(t.receitaRealizada.minus(t.despesaRealizada)),
+        };
+      })
+      .sort((a, b) => a.origem.localeCompare(b.origem, "pt-BR")),
     carteira: {
       capitalInvestido: money(capitalInvestido),
       avaliacao: money(avaliacao),

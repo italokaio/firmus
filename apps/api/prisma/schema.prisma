@@ -976,6 +976,8 @@ enum ReportType {
   FINANCIAL_DRE
   FINANCIAL_CASHFLOW_GERAL
   SALES_PIPELINE
+  INVESTOR_REPORT
+  TRANSACTION_STATEMENT
 }
 
 enum ReportFormat {
@@ -992,6 +994,8 @@ model Report {
   type          ReportType
   format        ReportFormat
   propertyId    String?
+  /// Filtros usados na geração (investidor, período, categoria...) + um "contexto" legível para o histórico.
+  filters       Json?
   storageKey    String
   generatedById String?
   createdAt     DateTime     @default(now())

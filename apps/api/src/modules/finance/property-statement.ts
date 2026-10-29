@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client";
 import {
-  REIMBURSEMENT_CATEGORY_NAME,
   type CashFlowMonthDto,
   type PostAcquisitionStage,
   type PropertyStatementDto,
@@ -15,7 +14,7 @@ import {
   type TransactionStatus,
 } from "@leilao-erp/types";
 import { marginPercent, projectedResult, roiPercent } from "../dashboard/portfolio-metrics";
-import { sumByOrigin } from "./transaction-rules";
+import { isReimbursementCategory, normalizeCategoryName, sumByOrigin } from "./transaction-rules";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ZERO = new Prisma.Decimal(0);
@@ -51,25 +50,14 @@ export interface StatementTransaction {
   updatedAt: Date;
 }
 
-const normalize = (name: string) =>
-  name
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .trim();
-
 /** Despesa cujo nome contém "aquisição" ou "compra" (as categorias são nomes livres por empresa). */
 export function isAquisicaoCategory(name: string): boolean {
-  return /aquisi|compra/.test(normalize(name));
+  return /aquisi|compra/.test(normalizeCategoryName(name));
 }
 
 /** Despesa cujo nome contém "reforma". */
 export function isReformaCategory(name: string): boolean {
-  return normalize(name).includes("reforma");
-}
-
-export function isReimbursementCategory(name: string): boolean {
-  return normalize(name) === normalize(REIMBURSEMENT_CATEGORY_NAME);
+  return normalizeCategoryName(name).includes("reforma");
 }
 
 export function statementMode(property: Pick<StatementProperty, "status" | "etapa">): StatementMode {

@@ -9,7 +9,7 @@
 | 3 | Identidade visual Firmus | **Publicada em 29/10/2026** (aguardando conferência visual do usuário) |
 | 4 | Novo dashboard | **Publicada em 29/10/2026** (migração `add_etapa_pos_aquisicao` aplicada; aguardando conferência visual) |
 | 5 | DRE do imóvel detalhada | **Implementada e commitada — OK do usuário para seguir; NÃO publicada** (sem migração) |
-| 6 | Relatórios com a marca | **Levantamento feito — aguardando OK do plano** |
+| 6 | Relatórios com a marca | **Implementada e commitada — aguardando OK final** (NÃO publicada; migração pendente em produção). Fases 5 e 6 ainda não publicadas |
 
 ## Decisões e respostas do usuário
 - Plano da Fase 1 aprovado ("Ok vamos seguir então!").
@@ -154,4 +154,16 @@ Backup `firmus-prod-20261029-0450-pre-fase4.json`; `migrate deploy` aplicou 2026
 - **P5 (rateio)**: existe regra em Investidores — `PropertyInvestor.percentual` por participação; `ProfitDistribution`: valor bruto = lucro base × percentual ÷ 100, IR 15% padrão, líquido, status pendente/pago. Em produção: 3 investidores, **0 participações, 0 distribuições**.
 - **Permissões**: só SÓCIO, DIRETOR, GERENTE e FINANCEIRO geram relatórios; INVESTIDOR só vê a lista. Achado (já existia): a lista de relatórios mostra todos os relatórios da empresa a quem tem permissão de ver (inclui o papel Investidor).
 - Base já pronta: tema de impressão (cores, Poppins, logos), `getPortfolio` (dashboard), `getStatement` (DRE), extrato Excel (`buildTransactionsWorkbook`), `sumByOrigin`. A Leitura de PDF pelo assistente permite conferir o layout visualmente.
+
+
+## Fase 6 — o que foi feito
+- **Migração** `20261030100000_add_report_types_and_filters` (só adiciona; Postgres 18 em produção): valores `INVESTOR_REPORT` e `TRANSACTION_STATEMENT` no enum `ReportType` e coluna `reports.filters` (JSON opcional, guarda os filtros e um "contexto" legível). **Ainda não aplicada em produção.**
+- **Motor novo** (substitui `report-renderers.ts`): `ReportContent` tipado (cards, kv, tabela, distribuição, colunas+linha, cascata, destaque; valores numéricos/datas de verdade; cada seção pode ser só PDF ou só Excel e escolhe a aba). **PDF** (`pdf-renderer.ts`): A4 retrato/paisagem, faixa petróleo com logo, tipo em caixa alta, título, contexto e "Gerado em dd/mm/aaaa por {usuário}"; cabeçalho compacto nas páginas seguintes; fundo #F1F7F8; cards; tabelas com cabeçalho repetido, linhas alternadas e larguras calculadas pelo conteúdo (sem quebrar palavra); gráficos vetoriais; rodapé "FGI · Firmus Gestão Imobiliária" e "Página X de Y"; Poppins embutida; nada abaixo de 9 pt. **Excel** (`excel-renderer.ts`): cabeçalho petróleo, números em R$/datas/percentuais, aba de lista com cabeçalho congelado e filtro automático, abas empilhadas com título e "Gerado por". O extrato Excel da fase 1 passou a usar o mesmo motor.
+- **Relatórios** (`reports/builders/`): DRE (espelha a aba Financeiro; Excel = Resumo · Lançamentos (uma linha por lançamento) · Fluxo mensal; faixa de cancelamento), Resumo do portfólio (espelha o dashboard + cancelados + alertas + lista completa de imóveis), Dossiê (seções de antes + resumo financeiro sem "Lucro líquido"), Pipeline (funil por etapa com capital e avaliação + vendas por status + vendas), Fluxo de caixa geral, **Relatório para Investidor** (novo), **Extrato de Lançamentos** (novo).
+- **P5 aplicada**: resultado atribuível = resultado do imóvel × percentual da participação cadastrada (bruto, antes do IR) só onde há participação; senão "Divisão de resultado não configurada" (nunca divide por conta própria); distribuições de lucro registradas aparecem quando existem. "% do custo" = pago pelo investidor ÷ custo incorrido total do imóvel (todos os pagadores).
+- **Dashboard**: o DTO ganhou avaliação por etapa do funil e lista de aquisições canceladas com resultado realizado.
+- **Tela de Relatórios**: tipos novos, filtros condicionais (investidor, imóvel, período, conta, categoria, status, pago por) e contexto no histórico.
+- **Segurança**: contas ligadas a investidor/corretor não veem mais a lista de relatórios da empresa (achado do levantamento).
+- **Verificação visual**: PDFs reais (dados de produção, só leitura) renderizados e conferidos página a página: DRE F 201 (66,4 · 18,4 · 14,1 · 1,0 e os 5 meses), DRE H 02, Dossiê, Portfólio, Pipeline, Fluxo geral, Extrato, Investidor e um cenário de aquisição cancelada. Dois bugs achados e corrigidos na conferência: colunas estreitas quebrando datas/valores no meio e uma expressão regular de palavras.
+- **Testes**: 157 na API (38 novos nesta fase). Build de produção do site OK.
 

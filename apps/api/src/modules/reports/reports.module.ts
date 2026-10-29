@@ -2,13 +2,14 @@ import { Module } from "@nestjs/common";
 import { AcquisitionModule } from "../acquisition/acquisition.module";
 import { LegalModule } from "../legal/legal.module";
 import { FinanceModule } from "../finance/finance.module";
+import { DashboardModule } from "../dashboard/dashboard.module";
 import { SimulatorModule } from "../simulator/simulator.module";
 import { SalesModule } from "../sales/sales.module";
 import { ReportsController } from "./reports.controller";
 import { ReportsService } from "./reports.service";
 
 @Module({
-  imports: [AcquisitionModule, LegalModule, FinanceModule, SimulatorModule, SalesModule],
+  imports: [AcquisitionModule, LegalModule, FinanceModule, DashboardModule, SimulatorModule, SalesModule],
   controllers: [ReportsController],
   providers: [ReportsService],
 })

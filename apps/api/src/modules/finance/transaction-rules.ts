@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
+  REIMBURSEMENT_CATEGORY_NAME,
   EMPRESA_ORIGEM_LABEL,
   ORIGEM_FILTER_EMPRESA,
   ORIGEM_FILTER_NAO_INFORMADO,
@@ -11,6 +12,20 @@ import {
   type TransactionOrigemTipo,
   type TransactionStatus,
 } from "@leilao-erp/types";
+
+/** Nome sem acento/caixa/espaços, para reconhecer categorias (nomes livres por empresa). */
+export function normalizeCategoryName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/** Categoria de receita criada no cancelamento da aquisição ("Reembolso de aquisição"). */
+export function isReimbursementCategory(name: string): boolean {
+  return normalizeCategoryName(name) === normalizeCategoryName(REIMBURSEMENT_CATEGORY_NAME);
+}
 
 export const CONCILIADO_LOCK_MESSAGE =
   "Lançamento conciliado: desfaça a conciliação para alterar valor, data ou status.";

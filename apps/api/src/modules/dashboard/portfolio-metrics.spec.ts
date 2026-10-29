@@ -215,7 +215,49 @@ describe("funil", () => {
     expect(byKey.REFORMA).toMatchObject({ count: 1, capital: "300.00" });
     expect(byKey.A_VENDA!.count).toBe(0);
     expect(byKey.VENDIDO).toMatchObject({ count: 1, capital: "700.00" });
-    expect(dto.semEtapa).toEqual({ count: 1, capital: "50.00" });
+    expect(dto.semEtapa).toEqual({ count: 1, capital: "50.00", avaliacao: "115000.00" });
+  });
+});
+
+describe("avaliação por etapa e lista de cancelados (relatório do portfólio)", () => {
+  it("soma a avaliação Caixa de cada etapa, ignorando imóveis sem avaliação", () => {
+    const dto = computePortfolio(
+      [
+        property("R1", { etapa: "REFORMA", avaliacao: "100000" }),
+        property("R2", { etapa: "REFORMA", avaliacao: "50000" }),
+        property("R3", { etapa: "REFORMA", avaliacao: null }),
+        property("E1", { status: "EM_ANALISE", avaliacao: "70000" }),
+      ],
+      [],
+      EXTRAS,
+      { now: NOW },
+    );
+    const byKey = Object.fromEntries(dto.funnel.map((s) => [s.key, s]));
+    expect(byKey.REFORMA).toMatchObject({ count: 3, avaliacao: "150000.00" });
+    expect(byKey.EM_ANALISE).toMatchObject({ count: 1, avaliacao: "70000.00" });
+  });
+
+  it("lista cada aquisição cancelada com capital, reembolsos e resultado realizado (perda)", () => {
+    const dto = computePortfolio(
+      [property("CANC", { status: "AQUISICAO_CANCELADA", origem: "Alvorada X", canceladoEm: new Date("2026-11-01T00:00:00.000Z") })],
+      [
+        tx("CANC", "57800"),
+        tx("CANC", "20000", { categoryType: "RECEITA", categoryName: "Reembolso de aquisição" }),
+        tx("CANC", "500", { categoryType: "RECEITA", categoryName: "Venda de imóvel" }),
+      ],
+      EXTRAS,
+      { now: NOW },
+    );
+    expect(dto.cancelados).toEqual([
+      {
+        id: "CANC",
+        origem: "Alvorada X",
+        canceladoEm: "2026-11-01T00:00:00.000Z",
+        capitalInvestido: "57800.00",
+        reembolsos: "20000.00",
+        resultadoRealizado: "-37300.00",
+      },
+    ]);
   });
 });
 

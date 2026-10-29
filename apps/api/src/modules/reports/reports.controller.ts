@@ -17,6 +17,8 @@ export class ReportsController {
   @Get()
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
   list(@CurrentUser() user: AuthenticatedUser) {
+    // Contas ligadas a um investidor ou corretor não veem a lista de relatórios da empresa (ela traz dados de todos).
+    if (user.investorId || user.brokerId) return [];
     return this.reportsService.listReports(user.companyId);
   }
 
