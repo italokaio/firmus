@@ -6,7 +6,7 @@
 |---|---|---|
 | 1 | Lançamentos: edição, histórico, "Pago por", Excel | **Concluída e publicada em 28/10/2026** (migrações aplicadas em produção, OK do usuário) |
 | 2 | Cancelamento de aquisição | **Implementada e commitada — aguardando OK final** (NÃO publicada; migração pendente em produção) |
-| 3 | Identidade visual Firmus | Pendente |
+| 3 | Identidade visual Firmus | **Levantamento feito — aguardando OK do plano** |
 | 4 | Novo dashboard | Pendente |
 | 5 | DRE do imóvel detalhada | Pendente |
 | 6 | Relatórios com a marca | Pendente |
@@ -64,4 +64,14 @@
 2. Lançamento cancelado é somente leitura e não volta a Previsto.
 3. Só imóvel ADQUIRIDA pode ter a aquisição cancelada; os demais usam "Reprovada".
 4. Imóvel cancelado continua aceitando novos lançamentos e edição dos realizados (reembolso tardio).
+
+
+## Fase 3 — Levantamento (resumo)
+- Estilo: Tailwind v4 + tokens semânticos estilo shadcn em `apps/web/app/globals.css` (`:root` e `.dark`, valores em oklch, matiz azul-violeta ~260). Nenhum componente usa cor fixa (só `themeColor`/manifest já em #005666) → trocar os tokens reskina o app inteiro.
+- Tema: next-themes (classe `.dark`), `defaultTheme="system"`; botão sol/lua no topbar.
+- Gráficos: recharts só na página do dashboard, cores via `var(--color-primary|warning|destructive|muted-foreground)`.
+- PDF: pdfkit na API (`report-renderers.ts`: Helvetica/Courier, sem layout); Excel: exceljs. Layout de marca é da Fase 6; a Fase 3 entrega tokens + fonte + logo para o PDF.
+- Logos: já no repositório (`apps/web/public/firmus-logo-dark.png` = wordmark branco + detalhe ciano; `firmus-logo-light.png` = petróleo). Poppins (OFL) baixável de github.com/google/fonts (4 pesos).
+- Contraste medido nas cores especificadas: escuro passa em tudo (mín. 5,16); claro/impressão: previsto #C98A1C = 2,94, cancelado #7FA4AB = 2,69 (falham como texto); branco sobre ciano #0097B2 = 3,46 (falha). Ajustes propostos no plano.
+- Sidebar mostra o texto de desenvolvimento "Fase 8 · Relatórios" no rodapé.
 
