@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StatusPill } from "@/components/ui/status-pill";
 import { OriginSelect, origemToValue, valueToOrigem } from "@/components/finance/origin-select";
 import { Select } from "@/components/ui/select";
 import { ApiError, apiClient } from "@/lib/api/client";
@@ -344,7 +345,9 @@ export function TransactionsPanel({
                   <span className={`text-sm font-medium${tx.status === "CANCELADO" ? " line-through" : ""}`}>
                     {formatCurrency(tx.amount)}
                   </span>
-                  {tx.status === "CANCELADO" && <Badge variant="outline">Cancelado</Badge>}
+                  <StatusPill tone={tx.status === "PREVISTO" ? "forecast" : tx.status === "REALIZADO" ? "realized" : "cancelled"}>
+                    {TRANSACTION_STATUS_LABELS[tx.status]}
+                  </StatusPill>
                   {tx.conciliado && <Badge variant="outline">Conciliado</Badge>}
                 </div>
                 <p className="text-xs text-muted-foreground">

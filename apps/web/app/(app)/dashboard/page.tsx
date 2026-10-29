@@ -10,7 +10,7 @@ import {
   type Priority,
   type ProspectStatus,
 } from "@leilao-erp/types";
-import { StatCard } from "@/components/dashboard/stat-card";
+import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiClient } from "@/lib/api/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
@@ -26,10 +26,10 @@ interface DashboardSummary {
 }
 
 const PRIORITY_COLORS: Record<Priority, string> = {
-  BAIXA: "var(--color-muted-foreground)",
-  MEDIA: "var(--color-primary)",
-  ALTA: "var(--color-warning)",
-  URGENTE: "var(--color-destructive)",
+  BAIXA: "var(--color-chart-4)",
+  MEDIA: "var(--color-chart-1)",
+  ALTA: "var(--color-chart-3)",
+  URGENTE: "var(--color-negative)",
 };
 
 export default function DashboardPage() {
@@ -57,22 +57,23 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
+        <KpiCard
           label="Imóveis em prospecção"
           value={isLoading ? "…" : String(data?.propertiesCount ?? 0)}
           icon={Home}
         />
-        <StatCard
+        <KpiCard
           label="Usuários ativos"
           value={isLoading ? "…" : String(data?.usersCount ?? 0)}
           icon={Users}
         />
-        <StatCard
+        <KpiCard
           label="Papéis configurados"
           value={isLoading ? "…" : String(data?.rolesCount ?? 0)}
           icon={Shield}
         />
-        <StatCard
+        <KpiCard
+          highlight
           label="Saldo consolidado"
           value={isLoading ? "…" : formatCurrency(data?.finance.saldoConsolidado ?? "0")}
           icon={Wallet}
@@ -80,12 +81,12 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard
+        <KpiCard
           label="Receitas realizadas no mês"
           value={isLoading ? "…" : formatCurrency(data?.finance.totalReceitasMes ?? "0")}
           icon={Wallet}
         />
-        <StatCard
+        <KpiCard
           label="Despesas realizadas no mês"
           value={isLoading ? "…" : formatCurrency(data?.finance.totalDespesasMes ?? "0")}
           icon={Wallet}
@@ -121,7 +122,7 @@ export default function DashboardPage() {
                         color: "var(--color-card-foreground)",
                       }}
                     />
-                    <Bar dataKey="count" name="Imóveis" fill="var(--color-primary)" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="count" name="Imóveis" fill="var(--color-chart-1)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

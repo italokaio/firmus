@@ -39,9 +39,6 @@ export function Sidebar() {
         <Logo className="h-6" />
       </div>
       <SidebarNav />
-      <div className="border-t border-sidebar-border px-5 py-4 text-xs text-muted-foreground">
-        Fase 8 · Relatórios
-      </div>
     </aside>
   );
 }

@@ -6,7 +6,7 @@
 |---|---|---|
 | 1 | Lançamentos: edição, histórico, "Pago por", Excel | **Concluída e publicada em 28/10/2026** (migrações aplicadas em produção, OK do usuário) |
 | 2 | Cancelamento de aquisição | **Implementada e commitada — aguardando OK final** (NÃO publicada; migração pendente em produção) |
-| 3 | Identidade visual Firmus | **Levantamento feito — aguardando OK do plano** |
+| 3 | Identidade visual Firmus | **Implementada e commitada — aguardando OK final** (NÃO publicada; sem migração) |
 | 4 | Novo dashboard | Pendente |
 | 5 | DRE do imóvel detalhada | Pendente |
 | 6 | Relatórios com a marca | Pendente |
@@ -74,4 +74,27 @@
 - Logos: já no repositório (`apps/web/public/firmus-logo-dark.png` = wordmark branco + detalhe ciano; `firmus-logo-light.png` = petróleo). Poppins (OFL) baixável de github.com/google/fonts (4 pesos).
 - Contraste medido nas cores especificadas: escuro passa em tudo (mín. 5,16); claro/impressão: previsto #C98A1C = 2,94, cancelado #7FA4AB = 2,69 (falham como texto); branco sobre ciano #0097B2 = 3,46 (falha). Ajustes propostos no plano.
 - Sidebar mostra o texto de desenvolvimento "Fase 8 · Relatórios" no rodapé.
+
+
+## Fase 3 — o que foi feito
+- **Tokens** em `apps/web/app/globals.css` (única fonte das cores): marca (petróleo/ciano/branco), tema escuro (padrão) e claro com os valores da especificação, semânticas (previsto/realizado/negativo/cancelado), `accent-text`, paleta de gráficos `chart-1..5`. `success`→realizado e `warning`→previsto (não há verde na paleta).
+- **Tipografia**: Poppins 400/500/600/700 via next/font; `tabular-nums` no app todo. **Tema padrão = escuro** (quem já escolheu no botão mantém).
+- **Componentes**: `KpiCard` (variante `highlight` petróleo + borda ciano), `StatusPill` (tons neutral/info/forecast/realized/negative/cancelled), variantes de Badge. Dashboard usa KpiCard (Saldo consolidado em destaque) e a paleta de gráficos; `StatCard` removido. Status do imóvel e dos lançamentos usam StatusPill (previsto âmbar, realizado ciano/petróleo, cancelado atenuado). Menu: item ativo petróleo/branco; texto de dev "Fase 8 · Relatórios" removido da sidebar.
+- **Tema de impressão**: `PRINT_THEME` + `contrastRatio` em `packages/types/src/print-theme.ts`; Poppins (4 TTF + licença OFL) e logos (branco/petróleo) em `apps/api/assets`; `registerPrintFonts` em `apps/api/src/modules/reports/print-theme.ts`. Os relatórios atuais NÃO mudaram de aparência (layout é da Fase 6).
+- **Verificação**: `pnpm --filter @leilao-erp/web check:theme` (contraste dos 2 temas + nenhuma cor literal fora dos tokens); testes do tema de impressão (contraste ≥ 4,5, PDF com Poppins embutida). Total de testes da API: 75. Build de produção do site OK.
+
+## Ajustes de cor feitos para passar em 4,5:1 (desvios da especificação)
+| Onde | Especificado | Usado | Motivo |
+|---|---|---|---|
+| Botão primário, tema claro | ciano #0097B2 c/ texto branco | fundo #00798F | branco/#0097B2 = 3,46 |
+| Botão primário, tema escuro | — | #0097B2 c/ texto #04222A | 4,79 |
+| Previsto (texto), claro | #C98A1C | #926100 (preenchimento segue #C98A1C) | 2,94 → 5,3 |
+| Cancelado (texto), claro | #7FA4AB | #4F6E74 (preenchimento segue #7FA4AB) | 2,69 → 5,5 |
+| Cancelado (texto), escuro | #7FA4AB | #84A9B0 | 4,45 sobre superfície-2 |
+| Ciano claro do PDF sobre a faixa petróleo | #4FC6DC (sugerido) | #62CFE3 | 4,14 → 4,58 |
+| Gráfico série 5, escuro | petróleo #005666 | #2A8FA3 | petróleo some sobre a superfície (1,67:1) |
+- Aceito sem ajuste (só elementos gráficos, tema claro): série 2 (#4FC6DC) ≈ 2,0:1 e série 3 (#C98A1C) 2,94:1 sobre branco — vêm da paleta da marca e têm legenda/tooltip.
+
+## Para conferir visualmente (não consegui ver a tela)
+Login, Dashboard (tema escuro e claro), lista e detalhe de imóvel, aba Financeiro (etiquetas Previsto/Realizado/Cancelado), diálogo de cancelamento, Caixa, Relatórios, Usuários/Papéis.
 

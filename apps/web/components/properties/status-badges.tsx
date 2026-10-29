@@ -5,17 +5,18 @@ import {
   type ProspectStatus,
 } from "@leilao-erp/types";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 
-const STATUS_VARIANT: Record<ProspectStatus, BadgeProps["variant"]> = {
-  NOVA_OPORTUNIDADE: "outline",
-  EM_ANALISE: "secondary",
-  APROVADA: "success",
-  REPROVADA: "destructive",
-  EM_DUE_DILIGENCE: "secondary",
-  ADQUIRIDA: "success",
-  VENDIDA: "success",
-  DESCARTADA: "destructive",
-  AQUISICAO_CANCELADA: "destructive",
+const STATUS_TONE: Record<ProspectStatus, StatusTone> = {
+  NOVA_OPORTUNIDADE: "neutral",
+  EM_ANALISE: "info",
+  APROVADA: "realized",
+  REPROVADA: "negative",
+  EM_DUE_DILIGENCE: "info",
+  ADQUIRIDA: "realized",
+  VENDIDA: "realized",
+  DESCARTADA: "negative",
+  AQUISICAO_CANCELADA: "cancelled",
 };
 
 const PRIORITY_VARIANT: Record<Priority, BadgeProps["variant"]> = {
@@ -26,7 +27,7 @@ const PRIORITY_VARIANT: Record<Priority, BadgeProps["variant"]> = {
 };
 
 export function ProspectStatusBadge({ status }: { status: ProspectStatus }) {
-  return <Badge variant={STATUS_VARIANT[status]}>{PROSPECT_STATUS_LABELS[status]}</Badge>;
+  return <StatusPill tone={STATUS_TONE[status]}>{PROSPECT_STATUS_LABELS[status]}</StatusPill>;
 }
 
 export function PriorityBadge({ priority }: { priority: Priority }) {

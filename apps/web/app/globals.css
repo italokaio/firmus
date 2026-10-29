@@ -3,102 +3,138 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Identidade visual Firmus — única fonte das cores do app.
+ * Componentes usam só os tokens semânticos abaixo (bg-card, text-muted-foreground,
+ * text-forecast-text...). Cores literais (#hex) só existem aqui — `pnpm check:theme`
+ * (scripts/check-theme.mjs) falha se aparecerem em outro lugar e confere o contraste.
+ */
+
 :root {
   --radius: 0.75rem;
 
-  --background: oklch(0.99 0.002 240);
-  --foreground: oklch(0.19 0.02 260);
+  /* Marca (extraídas das logos oficiais) */
+  --brand-petrol: #005666;
+  --brand-cyan: #0097b2;
+  --brand-white: #ffffff;
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.19 0.02 260);
+  /* ---------- Tema claro (também a base do tema de impressão) ---------- */
+  --background: #f1f7f8;
+  --foreground: #0b2f36;
 
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.19 0.02 260);
+  --card: #ffffff;
+  --card-foreground: #0b2f36;
+  --popover: #ffffff;
+  --popover-foreground: #0b2f36;
 
-  --primary: oklch(0.32 0.12 265);
-  --primary-foreground: oklch(0.98 0.005 260);
+  /* Ação primária: o ciano da marca escurecido para o texto branco passar de 4,5:1 */
+  --primary: #00798f;
+  --primary-foreground: #ffffff;
 
-  --secondary: oklch(0.96 0.01 260);
-  --secondary-foreground: oklch(0.25 0.03 260);
+  --secondary: #e2f1f4;
+  --secondary-foreground: #0b2f36;
+  --muted: #e2f1f4;
+  --muted-foreground: #4a6b72;
+  --accent: #e2f1f4;
+  --accent-foreground: #0b2f36;
 
-  --muted: oklch(0.96 0.008 260);
-  --muted-foreground: oklch(0.5 0.02 260);
+  --border: #d5e5e8;
+  --input: #d5e5e8;
+  --ring: #0097b2;
 
-  --accent: oklch(0.94 0.03 250);
-  --accent-foreground: oklch(0.25 0.05 260);
+  /* Texto de destaque (links, valores realçados) */
+  --accent-text: #005666;
 
-  --destructive: oklch(0.58 0.22 25);
-  --destructive-foreground: oklch(0.98 0.005 260);
+  /* Semânticas: previsto = âmbar, realizado = ciano/petróleo */
+  --negative: #c0392b;
+  --negative-foreground: #ffffff;
+  --forecast: #c98a1c;
+  --forecast-foreground: #0b2f36;
+  --forecast-text: #926100;
+  --realized: #005666;
+  --realized-foreground: #ffffff;
+  --realized-text: #005666;
+  --cancelled: #7fa4ab;
+  --cancelled-foreground: #0b2f36;
+  --cancelled-text: #4f6e74;
 
-  --success: oklch(0.62 0.15 155);
-  --success-foreground: oklch(0.98 0.005 260);
+  /* Paleta de gráficos, nesta ordem */
+  --chart-1: #0097b2;
+  --chart-2: #4fc6dc;
+  --chart-3: #c98a1c;
+  --chart-4: #4a6b72;
+  --chart-5: #005666;
 
-  --warning: oklch(0.75 0.15 80);
-  --warning-foreground: oklch(0.2 0.02 260);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0b2f36;
+  --sidebar-primary: #0097b2;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #005666;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #d5e5e8;
+  --sidebar-ring: #0097b2;
 
-  --border: oklch(0.91 0.008 260);
-  --input: oklch(0.91 0.008 260);
-  --ring: oklch(0.55 0.09 265);
-
-  --sidebar: oklch(0.98 0.004 260);
-  --sidebar-foreground: oklch(0.25 0.02 260);
-  --sidebar-primary: oklch(0.32 0.12 265);
-  --sidebar-primary-foreground: oklch(0.98 0.005 260);
-  --sidebar-accent: oklch(0.94 0.02 260);
-  --sidebar-accent-foreground: oklch(0.25 0.03 260);
-  --sidebar-border: oklch(0.91 0.008 260);
-  --sidebar-ring: oklch(0.55 0.09 265);
-
-  --glass-bg: oklch(1 0 0 / 55%);
-  --glass-border: oklch(1 0 0 / 40%);
+  --glass-bg: #ffffffb3;
+  --glass-border: #d5e5e8;
 }
 
 .dark {
-  --background: oklch(0.16 0.014 260);
-  --foreground: oklch(0.94 0.006 260);
+  /* ---------- Tema escuro (padrão) ---------- */
+  --background: #04222a;
+  --foreground: #eaf4f6;
 
-  --card: oklch(0.19 0.016 260);
-  --card-foreground: oklch(0.94 0.006 260);
+  --card: #08313b;
+  --card-foreground: #eaf4f6;
+  --popover: #0c3c47;
+  --popover-foreground: #eaf4f6;
 
-  --popover: oklch(0.19 0.016 260);
-  --popover-foreground: oklch(0.94 0.006 260);
+  /* No escuro o ciano da marca é usado direto, com texto escuro por cima (4,79:1) */
+  --primary: #0097b2;
+  --primary-foreground: #04222a;
 
-  --primary: oklch(0.78 0.09 265);
-  --primary-foreground: oklch(0.16 0.02 260);
+  --secondary: #0c3c47;
+  --secondary-foreground: #eaf4f6;
+  --muted: #0c3c47;
+  --muted-foreground: #9dbec4;
+  --accent: #0c3c47;
+  --accent-foreground: #eaf4f6;
 
-  --secondary: oklch(0.26 0.02 260);
-  --secondary-foreground: oklch(0.94 0.006 260);
+  --border: #14505c;
+  --input: #14505c;
+  --ring: #4fc6dc;
 
-  --muted: oklch(0.24 0.016 260);
-  --muted-foreground: oklch(0.66 0.02 260);
+  --accent-text: #4fc6dc;
 
-  --accent: oklch(0.29 0.03 260);
-  --accent-foreground: oklch(0.94 0.01 260);
+  --negative: #ff9a8a;
+  --negative-foreground: #04222a;
+  --forecast: #f0b44c;
+  --forecast-foreground: #04222a;
+  --forecast-text: #f0b44c;
+  --realized: #4fc6dc;
+  --realized-foreground: #04222a;
+  --realized-text: #4fc6dc;
+  --cancelled: #7fa4ab;
+  --cancelled-foreground: #04222a;
+  --cancelled-text: #84a9b0;
 
-  --destructive: oklch(0.65 0.2 25);
-  --destructive-foreground: oklch(0.16 0.02 260);
+  --chart-1: #0097b2;
+  --chart-2: #4fc6dc;
+  --chart-3: #f0b44c;
+  --chart-4: #9dbec4;
+  /* O petróleo puro some sobre a superfície escura (1,67:1): usa-se uma variação mais clara */
+  --chart-5: #2a8fa3;
 
-  --success: oklch(0.7 0.15 155);
-  --success-foreground: oklch(0.16 0.02 260);
+  --sidebar: #031b21;
+  --sidebar-foreground: #eaf4f6;
+  --sidebar-primary: #0097b2;
+  --sidebar-primary-foreground: #04222a;
+  --sidebar-accent: #005666;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #14505c;
+  --sidebar-ring: #4fc6dc;
 
-  --warning: oklch(0.8 0.14 85);
-  --warning-foreground: oklch(0.16 0.02 260);
-
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.6 0.1 265);
-
-  --sidebar: oklch(0.14 0.014 260);
-  --sidebar-foreground: oklch(0.9 0.006 260);
-  --sidebar-primary: oklch(0.78 0.09 265);
-  --sidebar-primary-foreground: oklch(0.16 0.02 260);
-  --sidebar-accent: oklch(0.24 0.02 260);
-  --sidebar-accent-foreground: oklch(0.94 0.01 260);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.6 0.1 265);
-
-  --glass-bg: oklch(0.2 0.016 260 / 55%);
-  --glass-border: oklch(1 0 0 / 8%);
+  --glass-bg: #08313bb3;
+  --glass-border: #14505c99;
 }
 
 @theme inline {
@@ -106,6 +142,10 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --color-brand-petrol: var(--brand-petrol);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-brand-white: var(--brand-white);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -121,15 +161,36 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
+  --color-accent-text: var(--accent-text);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* "destructive" (nome do shadcn) é o "negativo" da marca; "success" e "warning" seguem
+     as semânticas realizado e previsto — não existe verde na paleta. */
+  --color-destructive: var(--negative);
+  --color-destructive-foreground: var(--negative-foreground);
+  --color-negative: var(--negative);
+  --color-negative-foreground: var(--negative-foreground);
+  --color-success: var(--realized);
+  --color-success-foreground: var(--realized-foreground);
+  --color-warning: var(--forecast);
+  --color-warning-foreground: var(--forecast-foreground);
+  --color-forecast: var(--forecast);
+  --color-forecast-foreground: var(--forecast-foreground);
+  --color-forecast-text: var(--forecast-text);
+  --color-realized: var(--realized);
+  --color-realized-foreground: var(--realized-foreground);
+  --color-realized-text: var(--realized-text);
+  --color-cancelled: var(--cancelled);
+  --color-cancelled-foreground: var(--cancelled-foreground);
+  --color-cancelled-text: var(--cancelled-text);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -140,8 +201,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-poppins);
 }
 
 @layer base {
@@ -150,6 +210,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Valores monetários e datas alinham em coluna */
+    font-variant-numeric: tabular-nums;
   }
 }
 
