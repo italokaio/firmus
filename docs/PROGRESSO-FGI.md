@@ -8,8 +8,8 @@
 | 2 | Cancelamento de aquisição | **Concluída e publicada em 29/10/2026** (migração `add_aquisicao_cancelada` aplicada em produção) |
 | 3 | Identidade visual Firmus | **Publicada em 29/10/2026** (aguardando conferência visual do usuário) |
 | 4 | Novo dashboard | **Publicada em 29/10/2026** (migração `add_etapa_pos_aquisicao` aplicada; aguardando conferência visual) |
-| 5 | DRE do imóvel detalhada | **Implementada e commitada — aguardando OK final** (NÃO publicada; sem migração) |
-| 6 | Relatórios com a marca | Pendente |
+| 5 | DRE do imóvel detalhada | **Implementada e commitada — OK do usuário para seguir; NÃO publicada** (sem migração) |
+| 6 | Relatórios com a marca | **Levantamento feito — aguardando OK do plano** |
 
 ## Decisões e respostas do usuário
 - Plano da Fase 1 aprovado ("Ok vamos seguir então!").
@@ -145,4 +145,13 @@ Backup `firmus-prod-20261029-0450-pre-fase4.json`; `migrate deploy` aplicou 2026
 - **Correção de arredondamento**: percentuais (margem, ROI, composição, desvio) agora saem da API com 4 casas e são arredondados uma só vez na tela (antes 14,146% virava "14.15" e aparecia 14,2%). Vale também para o dashboard.
 - **Testes**: 119 na API (23 novos). Conferido com dados reais (backup): F 201 = R$ 57.260,00; composição 66,4% · 18,4% · 14,1% · 1,0%; meses fev 45.200 · mar 600 · jun 6.650 · jul 1.450 · out 3.360; H 02 = R$ 57.800,00 em 10/2026. Build de produção OK.
 - **Não feito (fora de escopo)**: fornecedor/comprovante (não existem no lançamento); layout de marca do PDF e DRE em Excel multi-abas (Fase 6).
+
+
+## Fase 6 — Levantamento (resumo)
+- **Gerador atual**: `ReportsService` monta um `ReportContent` simples (seções `kv` e `table`, **tudo texto já formatado**, ex.: "R$ 1.234,56") e dois renderizadores: PDF (pdfkit, Helvetica/Courier, tabela alinhada por fonte monoespaçada, sem cabeçalho/rodapé/paginação) e Excel (exceljs, uma aba por seção, **valores em texto**, sem estilo). Títulos/subtítulos sem o usuário que gerou.
+- **Relatórios existentes** (conteúdo a manter): Resumo do portfólio (só uma tabela de imóveis: origem, cidade/UF, status, prioridade, avaliação); Dossiê (Visão geral, Aquisição, Jurídico, Financeiro (DRE) com "Lucro líquido"/"Margem", Cenários do simulador, Venda); DRE (resumo, receitas e despesas por categoria, fluxo mensal); Pipeline (tabela de vendas); Fluxo de caixa geral (7º, publicado na fase 1).
+- **Histórico**: modelo `Report` (tipo, formato, imóvel, chave no storage, gerado por, data). Não guarda filtros. Tela de Relatórios: tipo + formato + imóvel; lista com download e exclusão.
+- **P5 (rateio)**: existe regra em Investidores — `PropertyInvestor.percentual` por participação; `ProfitDistribution`: valor bruto = lucro base × percentual ÷ 100, IR 15% padrão, líquido, status pendente/pago. Em produção: 3 investidores, **0 participações, 0 distribuições**.
+- **Permissões**: só SÓCIO, DIRETOR, GERENTE e FINANCEIRO geram relatórios; INVESTIDOR só vê a lista. Achado (já existia): a lista de relatórios mostra todos os relatórios da empresa a quem tem permissão de ver (inclui o papel Investidor).
+- Base já pronta: tema de impressão (cores, Poppins, logos), `getPortfolio` (dashboard), `getStatement` (DRE), extrato Excel (`buildTransactionsWorkbook`), `sumByOrigin`. A Leitura de PDF pelo assistente permite conferir o layout visualmente.
 
