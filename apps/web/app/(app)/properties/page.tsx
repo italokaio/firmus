@@ -139,7 +139,17 @@ export default function PropertiesPage() {
                       </td>
                       {canDelete && (
                         <td className="px-4 py-3 text-right">
-                          <Button size="icon" variant="ghost" onClick={() => setPropertyToDelete(property)}>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            disabled={property.hasRealizedTransactions}
+                            title={
+                              property.hasRealizedTransactions
+                                ? "Imóvel com lançamentos realizados não pode ser excluído. Use “Cancelar aquisição”."
+                                : "Excluir"
+                            }
+                            onClick={() => setPropertyToDelete(property)}
+                          >
                             <Trash2 className="size-4" />
                           </Button>
                         </td>

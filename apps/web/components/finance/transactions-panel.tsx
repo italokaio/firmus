@@ -7,11 +7,11 @@ import {
   EMPRESA_ORIGEM_LABEL,
   TRANSACTION_STATUS_LABELS,
   TRANSACTION_STATUSES,
+  TRANSACTION_STATUSES_EDITABLE,
   type FinanceCategoryDto,
   type InvestorDto,
   type TransactionDto,
   type TransactionHistoryEntryDto,
-  type TransactionOrigemTipo,
   type TransactionStatus,
 } from "@leilao-erp/types";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OriginSelect, origemToValue, valueToOrigem } from "@/components/finance/origin-select";
 import { Select } from "@/components/ui/select";
 import { ApiError, apiClient } from "@/lib/api/client";
 import { formatCalendarDate, formatCurrency } from "@/lib/format";
@@ -35,19 +36,6 @@ const emptyForm = {
   origem: "",
 };
 
-/** "Pago por" no formulário: "" (não informado), "EMPRESA" ou "INVESTIDOR:<id>". */
-function origemToValue(tx: Pick<TransactionDto, "origemTipo" | "investidorId">): string {
-  if (tx.origemTipo === "EMPRESA") return "EMPRESA";
-  if (tx.origemTipo === "INVESTIDOR" && tx.investidorId) return `INVESTIDOR:${tx.investidorId}`;
-  return "";
-}
-
-function valueToOrigem(value: string): { origemTipo: TransactionOrigemTipo | null; investidorId: string | null } {
-  if (value === "EMPRESA") return { origemTipo: "EMPRESA", investidorId: null };
-  if (value.startsWith("INVESTIDOR:")) return { origemTipo: "INVESTIDOR", investidorId: value.slice("INVESTIDOR:".length) };
-  return { origemTipo: null, investidorId: null };
-}
-
 function origemLabel(tx: TransactionDto): string | null {
   if (tx.origemTipo === "EMPRESA") return EMPRESA_ORIGEM_LABEL;
   if (tx.origemTipo === "INVESTIDOR") return tx.investidor?.name ?? "Investidor";
@@ -56,36 +44,6 @@ function origemLabel(tx: TransactionDto): string | null {
 
 /** Datas de lançamento são gravadas à meia-noite UTC; o input type=date usa só a parte da data. */
 const toDateInput = (iso: string) => iso.slice(0, 10);
-
-function OriginSelect({
-  value,
-  onChange,
-  investors,
-  className,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  investors: InvestorDto[] | undefined;
-  className?: string;
-}) {
-  return (
-    <Select className={className} value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">Não informado</option>
-      <optgroup label="Empresa">
-        <option value="EMPRESA">{EMPRESA_ORIGEM_LABEL}</option>
-      </optgroup>
-      {investors && investors.length > 0 && (
-        <optgroup label="Investidores">
-          {investors.map((investor) => (
-            <option key={investor.id} value={`INVESTIDOR:${investor.id}`}>
-              {investor.name}
-            </option>
-          ))}
-        </optgroup>
-      )}
-    </Select>
-  );
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof ApiError || error instanceof Error ? error.message : "Erro inesperado";
@@ -182,7 +140,7 @@ function EditTransactionDialog({
               value={form.status}
               onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as TransactionStatus }))}
             >
-              {TRANSACTION_STATUSES.map((status) => (
+              {TRANSACTION_STATUSES_EDITABLE.map((status) => (
                 <option key={status} value={status}>
                   {TRANSACTION_STATUS_LABELS[status]}
                 </option>
@@ -293,6 +251,7 @@ export function TransactionsPanel({
   const [newTx, setNewTx] = React.useState(emptyForm);
   const [editing, setEditing] = React.useState<TransactionDto | null>(null);
   const [historyOf, setHistoryOf] = React.useState<TransactionDto | null>(null);
+  const [statusFilter, setStatusFilter] = React.useState<TransactionStatus | "">("");
 
   const { data: transactions, isLoading } = useQuery({
     queryKey,
@@ -345,9 +304,24 @@ export function TransactionsPanel({
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
+  const visible = (transactions ?? []).filter((tx) => !statusFilter || tx.status === statusFilter);
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-end gap-3">
+        <Select
+          className="w-40"
+          aria-label="Filtrar por status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as TransactionStatus | "")}
+        >
+          <option value="">Todos os status</option>
+          {TRANSACTION_STATUSES.map((status) => (
+            <option key={status} value={status}>
+              {TRANSACTION_STATUS_LABELS[status]}
+            </option>
+          ))}
+        </Select>
         {exportExcel.isError && <span className="text-xs text-destructive">{errorMessage(exportExcel.error)}</span>}
         <Button size="sm" variant="outline" disabled={exportExcel.isPending} onClick={() => exportExcel.mutate()}>
           {exportExcel.isPending ? <Loader2 className="animate-spin" /> : <Download />}
@@ -357,14 +331,20 @@ export function TransactionsPanel({
 
       {updateTx.isError && <p className="text-sm text-destructive">{errorMessage(updateTx.error)}</p>}
 
-      {transactions && transactions.length > 0 ? (
+      {visible.length > 0 ? (
         <div className="flex flex-col divide-y divide-border">
-          {transactions.map((tx) => (
-            <div key={tx.id} className="flex items-center justify-between gap-3 py-3">
+          {visible.map((tx) => (
+            <div
+              key={tx.id}
+              className={`flex items-center justify-between gap-3 py-3${tx.status === "CANCELADO" ? " opacity-60" : ""}`}
+            >
               <div>
                 <div className="flex items-center gap-2">
                   <Badge variant={tx.category.type === "RECEITA" ? "default" : "outline"}>{tx.category.name}</Badge>
-                  <span className="text-sm font-medium">{formatCurrency(tx.amount)}</span>
+                  <span className={`text-sm font-medium${tx.status === "CANCELADO" ? " line-through" : ""}`}>
+                    {formatCurrency(tx.amount)}
+                  </span>
+                  {tx.status === "CANCELADO" && <Badge variant="outline">Cancelado</Badge>}
                   {tx.conciliado && <Badge variant="outline">Conciliado</Badge>}
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -386,7 +366,7 @@ export function TransactionsPanel({
                   )}
                 </p>
               </div>
-              {canManage && (
+              {canManage && tx.status !== "CANCELADO" && (
                 <div className="flex items-center gap-2">
                   <Select
                     className="w-32"
@@ -395,7 +375,7 @@ export function TransactionsPanel({
                     title={tx.conciliado ? CONCILIADO_LOCK_NOTE : undefined}
                     onChange={(e) => updateTx.mutate({ id: tx.id, data: { status: e.target.value } })}
                   >
-                    {TRANSACTION_STATUSES.map((status) => (
+                    {TRANSACTION_STATUSES_EDITABLE.map((status) => (
                       <option key={status} value={status}>
                         {TRANSACTION_STATUS_LABELS[status]}
                       </option>
@@ -466,7 +446,7 @@ export function TransactionsPanel({
               value={newTx.status}
               onChange={(e) => setNewTx((prev) => ({ ...prev, status: e.target.value as TransactionStatus }))}
             >
-              {TRANSACTION_STATUSES.map((status) => (
+              {TRANSACTION_STATUSES_EDITABLE.map((status) => (
                 <option key={status} value={status}>
                   {TRANSACTION_STATUS_LABELS[status]}
                 </option>

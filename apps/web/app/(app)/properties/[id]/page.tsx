@@ -4,8 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
-import { PERMISSIONS, type PropertyDto } from "@leilao-erp/types";
+import { Ban, Pencil, Trash2 } from "lucide-react";
+import { PERMISSIONS, type DreDto, type PropertyDto } from "@leilao-erp/types";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PriorityBadge, ProspectStatusBadge } from "@/components/properties/status-badges";
@@ -20,13 +20,16 @@ import { SimulatorPanel } from "@/components/simulator/simulator-panel";
 import { InvestorsTab } from "@/components/properties/tabs/investors-tab";
 import { SalesTab } from "@/components/properties/tabs/sales-tab";
 import { DeletePropertyDialog } from "@/components/properties/delete-property-dialog";
+import { CancelAcquisitionDialog } from "@/components/properties/cancel-acquisition-dialog";
 import { apiClient } from "@/lib/api/client";
 import { usePermission } from "@/lib/hooks/use-permission";
+import { formatCalendarDate, formatCurrency } from "@/lib/format";
 
 export default function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [cancelOpen, setCancelOpen] = React.useState(false);
   const canEdit = usePermission(PERMISSIONS.PROPERTIES_EDIT);
   const canDelete = usePermission(PERMISSIONS.PROPERTIES_DELETE);
   const canManageDueDiligence = usePermission(PERMISSIONS.DUE_DILIGENCE_MANAGE);
@@ -34,6 +37,7 @@ export default function PropertyDetailPage() {
   const canManageLegal = usePermission(PERMISSIONS.LEGAL_MANAGE);
   const canManageRenovation = usePermission(PERMISSIONS.RENOVATION_MANAGE);
   const canManageFinance = usePermission(PERMISSIONS.FINANCE_MANAGE);
+  const canViewFinance = usePermission(PERMISSIONS.FINANCE_VIEW);
   const canManageSimulator = usePermission(PERMISSIONS.SIMULATOR_MANAGE);
   const canManageInvestors = usePermission(PERMISSIONS.INVESTORS_MANAGE);
   const canManageSales = usePermission(PERMISSIONS.SALES_MANAGE);
@@ -41,6 +45,14 @@ export default function PropertyDetailPage() {
   const { data: property, isLoading } = useQuery({
     queryKey: ["property", id],
     queryFn: () => apiClient.get<PropertyDto>(`/properties/${id}`),
+  });
+
+  const isCancelled = property?.status === "AQUISICAO_CANCELADA";
+  // Resultado realizado (receitas − despesas realizadas): negativo = perda. Mesma consulta da aba Financeiro.
+  const { data: dre } = useQuery({
+    queryKey: ["finance-dre", id],
+    queryFn: () => apiClient.get<DreDto>(`/properties/${id}/finance/dre`),
+    enabled: isCancelled && canViewFinance,
   });
 
   if (isLoading || !property) {
@@ -71,14 +83,50 @@ export default function PropertyDetailPage() {
               </Link>
             </Button>
           )}
+          {canEdit && property.status === "ADQUIRIDA" && (
+            <Button variant="outline" onClick={() => setCancelOpen(true)}>
+              <Ban />
+              Cancelar aquisição
+            </Button>
+          )}
           {canDelete && (
-            <Button variant="outline" onClick={() => setDeleteOpen(true)}>
+            <Button
+              variant="outline"
+              disabled={property.hasRealizedTransactions}
+              title={
+                property.hasRealizedTransactions
+                  ? "Este imóvel tem lançamentos realizados e não pode ser excluído. Use \u201CCancelar aquisição\u201D."
+                  : undefined
+              }
+              onClick={() => setDeleteOpen(true)}
+            >
               <Trash2 />
               Excluir
             </Button>
           )}
         </div>
       </div>
+
+      {isCancelled && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
+          <p className="font-semibold">
+            Aquisição cancelada{property.canceladoEm ? ` em ${formatCalendarDate(property.canceladoEm)}` : ""}
+            {property.canceladoPor ? ` por ${property.canceladoPor.name}` : ""}
+          </p>
+          {property.motivoCancelamento && <p className="mt-1">Motivo: {property.motivoCancelamento}</p>}
+          {dre && (
+            <p className="mt-1">
+              Resultado realizado:{" "}
+              <strong className={Number(dre.lucroLiquido) < 0 ? "text-destructive" : undefined}>
+                {formatCurrency(dre.lucroLiquido)}
+              </strong>
+              {Number(dre.lucroLiquido) < 0 ? " (perda)" : ""}
+            </p>
+          )}
+        </div>
+      )}
+
+      <CancelAcquisitionDialog property={property} open={cancelOpen} onOpenChange={setCancelOpen} />
 
       <DeletePropertyDialog
         propertyId={id}

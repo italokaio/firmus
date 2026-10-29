@@ -16,7 +16,9 @@ export default function EditPropertyPage() {
   });
 
   async function handleSubmit(values: CreatePropertyInput) {
-    await apiClient.patch(`/properties/${id}`, values);
+    // Aquisição cancelada: o status é irreversível — não é enviado na edição.
+    const { status: _status, ...withoutStatus } = values;
+    await apiClient.patch(`/properties/${id}`, property?.status === "AQUISICAO_CANCELADA" ? withoutStatus : values);
     router.push(`/properties/${id}`);
   }
 
@@ -26,6 +28,8 @@ export default function EditPropertyPage() {
 
   const defaultValues: Partial<CreatePropertyInput> = {
     ...property,
+    // Placeholder válido para o schema; o campo fica oculto e não é enviado quando cancelada.
+    status: property.status === "AQUISICAO_CANCELADA" ? "ADQUIRIDA" : property.status,
     tipoLeilao: property.tipoLeilao ?? undefined,
     editalUrl: property.editalUrl ?? "",
     proprietarioNome: property.proprietarioNome ?? "",
@@ -47,7 +51,12 @@ export default function EditPropertyPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Editar oportunidade</h1>
         <p className="text-sm text-muted-foreground">{property.origem}</p>
       </div>
-      <PropertyForm defaultValues={defaultValues} onSubmit={handleSubmit} submitLabel="Salvar alterações" />
+      <PropertyForm
+        defaultValues={defaultValues}
+        onSubmit={handleSubmit}
+        submitLabel="Salvar alterações"
+        hideStatus={property.status === "AQUISICAO_CANCELADA"}
+      />
     </div>
   );
 }

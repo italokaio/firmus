@@ -14,12 +14,14 @@ import {
 import {
   PERMISSIONS,
   confirmDocumentUploadSchema,
+  cancelAcquisitionSchema,
   confirmPhotoUploadSchema,
   createPropertySchema,
   presignUploadSchema,
   propertyFilterSchema,
   updatePropertySchema,
   type AuthenticatedUser,
+  type CancelAcquisitionInput,
   type ConfirmDocumentUploadInput,
   type ConfirmPhotoUploadInput,
   type CreatePropertyInput,
@@ -32,10 +34,14 @@ import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { rowScope } from "../../common/row-scope";
 import { PropertiesService } from "./properties.service";
+import { PropertyCancellationService } from "./property-cancellation.service";
 
 @Controller("properties")
 export class PropertiesController {
-  constructor(private readonly propertiesService: PropertiesService) {}
+  constructor(
+    private readonly propertiesService: PropertiesService,
+    private readonly cancellationService: PropertyCancellationService,
+  ) {}
 
   @Get()
   @RequirePermission(PERMISSIONS.PROPERTIES_VIEW)
@@ -68,6 +74,25 @@ export class PropertiesController {
     @Body() body: UpdatePropertyInput,
   ) {
     return this.propertiesService.update(user.companyId, id, body, rowScope(user));
+  }
+
+  /** Prévia do cancelamento da aquisição (quantos previstos serão cancelados, resultado realizado). */
+  @Get(":id/cancel-impact")
+  @RequirePermission(PERMISSIONS.PROPERTIES_EDIT)
+  getCancelImpact(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.cancellationService.getImpact(user.companyId, id, rowScope(user));
+  }
+
+  /** Cancela a aquisição (irreversível): preserva realizados, cancela previstos e registra reembolso opcional. */
+  @Post(":id/cancel-acquisition")
+  @RequirePermission(PERMISSIONS.PROPERTIES_EDIT)
+  @UsePipes(new ZodValidationPipe(cancelAcquisitionSchema))
+  cancelAcquisition(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() body: CancelAcquisitionInput,
+  ) {
+    return this.cancellationService.cancel(user.companyId, user.id, id, body, rowScope(user));
   }
 
   @Delete(":id")

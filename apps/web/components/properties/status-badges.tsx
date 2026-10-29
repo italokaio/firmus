@@ -15,6 +15,7 @@ const STATUS_VARIANT: Record<ProspectStatus, BadgeProps["variant"]> = {
   ADQUIRIDA: "success",
   VENDIDA: "success",
   DESCARTADA: "destructive",
+  AQUISICAO_CANCELADA: "destructive",
 };
 
 const PRIORITY_VARIANT: Record<Priority, BadgeProps["variant"]> = {

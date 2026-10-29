@@ -28,6 +28,9 @@ const transactionInclude = {
   investidor: { select: { id: true, name: true } },
 };
 
+export const CANCELLED_TRANSACTION_MESSAGE =
+  "Lançamento cancelado (aquisição cancelada) é somente leitura e não pode ser alterado nem excluído.";
+
 type TransactionWithRelations = Prisma.TransactionGetPayload<{ include: typeof transactionInclude }>;
 
 function toSnapshot(tx: TransactionWithRelations): TransactionSnapshot {
@@ -271,7 +274,8 @@ export class FinanceService {
   async getTotalsByOrigin(companyId: string, filters: TransactionExportFilterInput) {
     const where = this.buildExportWhere(companyId, filters);
     const transactions = await this.prisma.transaction.findMany({
-      where: { ...where, category: { type: "DESPESA" } },
+      // Cancelado nunca entra em soma, a menos que o filtro peça explicitamente esse status.
+      where: { ...where, category: { type: "DESPESA" }, status: filters.status ?? { not: "CANCELADO" } },
       include: transactionInclude,
     });
     return sumByOrigin(
@@ -328,6 +332,7 @@ export class FinanceService {
    */
   async updateTransaction(companyId: string, accountId: string, id: string, input: UpdateTransactionInput) {
     const existing = await this.findTransactionOrThrow(companyId, accountId, id);
+    if (existing.status === "CANCELADO") throw new BadRequestException(CANCELLED_TRANSACTION_MESSAGE);
     const before = toSnapshot(existing);
 
     let categoryName = existing.category.name;
@@ -415,6 +420,7 @@ export class FinanceService {
 
   async deleteTransaction(companyId: string, accountId: string, id: string) {
     const transaction = await this.findTransactionOrThrow(companyId, accountId, id);
+    if (transaction.status === "CANCELADO") throw new BadRequestException(CANCELLED_TRANSACTION_MESSAGE);
     await this.prisma.transaction.delete({ where: { id } });
     await this.auditService.log({
       entityType: "Transaction",
@@ -527,6 +533,8 @@ export class FinanceService {
     >();
 
     for (const tx of transactions) {
+      // Cancelado não é previsto nem realizado: fora de qualquer soma.
+      if (tx.status === "CANCELADO") continue;
       const month = tx.date.toISOString().slice(0, 7);
       const entry = months.get(month) ?? {
         previstoEntradas: new Prisma.Decimal(0),
@@ -590,6 +598,8 @@ export class FinanceService {
     >();
 
     for (const tx of transactions) {
+      // Cancelado não é previsto nem realizado: fora de qualquer soma.
+      if (tx.status === "CANCELADO") continue;
       const month = tx.date.toISOString().slice(0, 7);
       const entry = months.get(month) ?? {
         previstoEntradas: new Prisma.Decimal(0),

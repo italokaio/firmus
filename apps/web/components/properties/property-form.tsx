@@ -40,9 +40,11 @@ interface PropertyFormProps {
   defaultValues?: Partial<CreatePropertyInput>;
   onSubmit: (values: CreatePropertyInput) => Promise<void>;
   submitLabel: string;
+  /** Aquisição cancelada: o status é irreversível e não pode ser editado. */
+  hideStatus?: boolean;
 }
 
-export function PropertyForm({ defaultValues, onSubmit, submitLabel }: PropertyFormProps) {
+export function PropertyForm({ defaultValues, onSubmit, submitLabel, hideStatus }: PropertyFormProps) {
   const queryClient = useQueryClient();
   const [newTagName, setNewTagName] = React.useState("");
 
@@ -239,15 +241,17 @@ export function PropertyForm({ defaultValues, onSubmit, submitLabel }: PropertyF
               ))}
             </Select>
           </Field>
-          <Field label="Status" error={errors.status?.message}>
-            <Select {...register("status")}>
-              {availableStatuses.map((status) => (
-                <option key={status} value={status}>
-                  {PROSPECT_STATUS_LABELS[status]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {!hideStatus && (
+            <Field label="Status" error={errors.status?.message}>
+              <Select {...register("status")}>
+                {availableStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {PROSPECT_STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label="Prioridade" error={errors.prioridade?.message}>
             <Select {...register("prioridade")}>
               {PRIORITIES.map((priority) => (

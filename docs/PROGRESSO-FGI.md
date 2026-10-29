@@ -5,7 +5,7 @@
 | Fase | Entrega | Status |
 |---|---|---|
 | 1 | Lançamentos: edição, histórico, "Pago por", Excel | **Concluída e publicada em 28/10/2026** (migrações aplicadas em produção, OK do usuário) |
-| 2 | Cancelamento de aquisição | **Levantamento feito — aguardando OK do plano** |
+| 2 | Cancelamento de aquisição | **Implementada e commitada — aguardando OK final** (NÃO publicada; migração pendente em produção) |
 | 3 | Identidade visual Firmus | Pendente |
 | 4 | Novo dashboard | Pendente |
 | 5 | DRE do imóvel detalhada | Pendente |
@@ -49,3 +49,19 @@
 - `getCashflow` e `getCompanyCashflow` tratam "não PREVISTO" como realizado: um `CANCELADO` seria somado como realizado se nada for feito. Saldo, DRE e resumo já filtram `REALIZADO` explicitamente (seguros).
 - Categorias são por empresa (`@@unique([companyId, name])`) e não existe categoria de reembolso em produção.
 - `PropertiesService.update` aceita `status` livre; precisa bloquear AQUISICAO_CANCELADA via PATCH comum e qualquer mudança a partir dela.
+
+## Fase 2 — o que foi feito
+- **Migração** `20261029120000_add_aquisicao_cancelada` (só adiciona): valor `AQUISICAO_CANCELADA` em ProspectStatus, `CANCELADO` em TransactionStatus, colunas `canceladoEm`, `canceladoPorId` (FK users, SET NULL), `motivoCancelamento` em properties. **Ainda não aplicada em produção** (aplicar com `prisma migrate deploy` antes do push; há permissão local para esse comando).
+- **API**: `POST /properties/:id/cancel-acquisition` (transação única; guarda contra cancelamento duplo concorrente), `GET /properties/:id/cancel-impact`. Permissão: `properties:edit`. Só cancela imóvel ADQUIRIDA.
+- **C5/C6**: realizados intactos; PREVISTO → CANCELADO com histórico por lançamento. **C7**: reembolso = receita na categoria "Reembolso de aquisição" (criada por empresa na primeira vez). **C9**: excluir imóvel com lançamento realizado é recusado na API e o botão fica desabilitado (`hasRealizedTransactions` na listagem/detalhe). **C4**: PATCH comum não muda status de imóvel cancelado e não consegue definir AQUISICAO_CANCELADA.
+- **Somas**: CANCELADO fora dos dois fluxos de caixa (corrigido o ramo "senão = realizado"), da soma por origem e do saldo/DRE/resumo (já filtravam REALIZADO). Lançamento cancelado é somente leitura (editar/excluir recusado; UI atenua e esconde controles; filtro de status na lista).
+- **Frontend**: botão e diálogo "Cancelar aquisição" (motivo, data, devolução opcional, prévia do impacto, confirmação digitando o nome), faixa no imóvel cancelado (data, autor, motivo, resultado realizado/perda), etiqueta "Aquisição cancelada", status oculto na edição de imóvel cancelado.
+- **Testes**: 50 no total (19 novos da fase 2).
+- **Fora desta fase**: funil/projeção de resultado (Fase 4) — hoje o gráfico por status do dashboard mostra "Aquisição cancelada" como uma barra própria.
+
+## Decisões provisórias da Fase 2 a confirmar
+1. Permissão para cancelar = `properties:edit` (quem edita imóveis).
+2. Lançamento cancelado é somente leitura e não volta a Previsto.
+3. Só imóvel ADQUIRIDA pode ter a aquisição cancelada; os demais usam "Reprovada".
+4. Imóvel cancelado continua aceitando novos lançamentos e edição dos realizados (reembolso tardio).
+

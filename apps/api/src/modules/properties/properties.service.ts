@@ -14,7 +14,13 @@ const propertyInclude = {
   photos: { orderBy: { order: "asc" as const } },
   documents: { orderBy: { createdAt: "desc" as const } },
   tags: { include: { tag: true } },
+  canceladoPor: { select: { id: true, name: true } },
 };
+
+export const REALIZED_BLOCKS_DELETE_MESSAGE =
+  "Este imóvel tem lançamentos realizados. Use 'Cancelar aquisição' em vez de excluir.";
+export const CANCELLED_STATUS_LOCKED_MESSAGE =
+  "A aquisição deste imóvel foi cancelada: o status não pode mais ser alterado.";
 
 /**
  * Escopo por linha (row-level scope): quando o usuário logado tem
@@ -76,7 +82,7 @@ export class PropertiesService {
       include: propertyInclude,
       orderBy: { createdAt: "desc" },
     });
-    return this.attachPhotoUrls(properties);
+    return this.withRealizedFlag(await this.attachPhotoUrls(properties));
   }
 
   async findById(companyId: string, id: string, scope?: PropertyRowScope) {
@@ -85,7 +91,8 @@ export class PropertiesService {
       include: propertyInclude,
     });
     if (!property) throw new NotFoundException("Imóvel não encontrado");
-    return this.attachPhotoUrl(property);
+    const [withFlag] = await this.withRealizedFlag([await this.attachPhotoUrl(property)]);
+    return withFlag!;
   }
 
   async create(companyId: string, input: CreatePropertyInput, createdByUserId?: string) {
@@ -140,6 +147,11 @@ export class PropertiesService {
   async update(companyId: string, id: string, input: UpdatePropertyInput, scope?: PropertyRowScope) {
     const before = await this.findById(companyId, id, scope);
 
+    // C4: o cancelamento é irreversível — o status não muda mais (as demais edições continuam livres).
+    if (before.status === "AQUISICAO_CANCELADA" && input.status !== undefined && input.status !== before.status) {
+      throw new BadRequestException(CANCELLED_STATUS_LOCKED_MESSAGE);
+    }
+
     if (input.tagIds) {
       await this.assertTagsBelongToCompany(companyId, input.tagIds);
     }
@@ -170,6 +182,8 @@ export class PropertiesService {
 
   async delete(companyId: string, id: string) {
     const property = await this.findById(companyId, id);
+    // C9: lançamento realizado é dinheiro que de fato se moveu — o caminho é o cancelamento, não a exclusão.
+    if (property.hasRealizedTransactions) throw new BadRequestException(REALIZED_BLOCKS_DELETE_MESSAGE);
     await this.prisma.property.delete({ where: { id } });
     await this.auditService.log({
       entityType: "Property",
@@ -280,6 +294,20 @@ export class PropertiesService {
     });
     if (!document) throw new NotFoundException("Documento não encontrado");
     return { url: await this.storageService.createDownloadUrl(document.storageKey) };
+  }
+
+  /** Marca imóveis que têm lançamento realizado (bloqueia a exclusão — C9). */
+  private async withRealizedFlag<T extends { id: string }>(properties: T[]) {
+    if (properties.length === 0) return [] as Array<T & { hasRealizedTransactions: boolean }>;
+    const accounts = await this.prisma.financeAccount.findMany({
+      where: {
+        propertyId: { in: properties.map((p) => p.id) },
+        transactions: { some: { status: "REALIZADO" } },
+      },
+      select: { propertyId: true },
+    });
+    const withRealized = new Set(accounts.map((a) => a.propertyId));
+    return properties.map((p) => ({ ...p, hasRealizedTransactions: withRealized.has(p.id) }));
   }
 
   private async attachPhotoUrls<

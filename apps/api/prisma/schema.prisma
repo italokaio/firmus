@@ -89,6 +89,7 @@ model User {
   transactionsCreated    Transaction[]
   reportsGenerated       Report[]
   propertiesCreated      Property[]            @relation("PropertyCreatedBy")
+  propertiesCancelled    Property[]            @relation("PropertyCanceladoPor")
 
   @@unique([companyId, email])
   @@index([companyId])
@@ -158,6 +159,9 @@ enum ProspectStatus {
   ADQUIRIDA
   VENDIDA
   DESCARTADA
+  /// Desistência de um imóvel já adquirido (distinta de REPROVADA, que é antes da compra).
+  /// Só é atingida pelo fluxo de cancelamento, é irreversível e preserva os lançamentos realizados.
+  AQUISICAO_CANCELADA
 }
 
 /// Oportunidade de imóvel de leilão — agregado central do sistema.
@@ -212,8 +216,14 @@ model Property {
   /// na Venda (ver SalesService).
   corretorResponsavelId String?
 
+  /// Cancelamento da aquisição (status AQUISICAO_CANCELADA) — data, autor e motivo obrigatórios no fluxo.
+  canceladoEm         DateTime?
+  canceladoPorId      String?
+  motivoCancelamento  String?
+
   company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdBy            User?              @relation("PropertyCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  canceladoPor         User?              @relation("PropertyCanceladoPor", fields: [canceladoPorId], references: [id], onDelete: SetNull)
   corretorResponsavel   Broker?            @relation("PropertyCorretorResponsavel", fields: [corretorResponsavelId], references: [id], onDelete: SetNull)
   photos            PropertyPhoto[]
   documents         PropertyDocument[]
@@ -647,6 +657,8 @@ model FinanceCategory {
 enum TransactionStatus {
   PREVISTO
   REALIZADO
+  /// Previsto que deixou de valer (ex.: aquisição cancelada). Não entra em nenhuma soma.
+  CANCELADO
 }
 
 /// De quem saiu (ou para quem entrou) o dinheiro de um lançamento. Opcional:

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRANSACTION_ORIGEM_TIPOS, TRANSACTION_STATUSES_EDITABLE, money, refineOrigem } from "./finance";
 
 export const OPERATION_TYPES = ["LEILAO", "VENDA_DIRETA", "GESTAO_TERCEIROS"] as const;
 export const AUCTION_TYPES = ["JUDICIAL", "EXTRAJUDICIAL"] as const;
@@ -14,6 +15,7 @@ export const PROSPECT_STATUSES = [
   "ADQUIRIDA",
   "VENDIDA",
   "DESCARTADA",
+  "AQUISICAO_CANCELADA",
 ] as const;
 
 export type OperationType = (typeof OPERATION_TYPES)[number];
@@ -32,6 +34,7 @@ export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
   ADQUIRIDA: "Adquirida",
   VENDIDA: "Vendida",
   DESCARTADA: "Descartada",
+  AQUISICAO_CANCELADA: "Aquisição cancelada",
 };
 
 export const OPERATION_TYPE_LABELS: Record<OperationType, string> = {
@@ -47,11 +50,17 @@ export const OPERATION_TYPE_LABELS: Record<OperationType, string> = {
  * os filtros mostram só este subconjunto.
  */
 export const PROSPECT_STATUSES_NON_LEILAO = PROSPECT_STATUSES.filter(
-  (status) => status !== "EM_DUE_DILIGENCE" && status !== "ADQUIRIDA",
+  (status) => status !== "EM_DUE_DILIGENCE" && status !== "ADQUIRIDA" && status !== "AQUISICAO_CANCELADA",
 );
 
+/**
+ * Status que o usuário pode atribuir diretamente (cadastro/edição). AQUISICAO_CANCELADA fica de fora:
+ * só é atingido pelo fluxo de cancelamento (irreversível, com motivo e tratamento dos lançamentos).
+ */
+export const PROSPECT_STATUSES_SELECTABLE = PROSPECT_STATUSES.filter((status) => status !== "AQUISICAO_CANCELADA");
+
 export function statusesForOperationType(tipoOperacao: OperationType): readonly ProspectStatus[] {
-  return tipoOperacao === "LEILAO" ? PROSPECT_STATUSES : PROSPECT_STATUSES_NON_LEILAO;
+  return tipoOperacao === "LEILAO" ? PROSPECT_STATUSES_SELECTABLE : PROSPECT_STATUSES_NON_LEILAO;
 }
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
@@ -126,7 +135,7 @@ const propertyBaseSchema = z.object({
   riscoJuridico: z.enum(LEGAL_RISK_LEVELS).default("MEDIO"),
   observacoes: z.string().optional(),
 
-  status: z.enum(PROSPECT_STATUSES).default("NOVA_OPORTUNIDADE"),
+  status: z.enum(PROSPECT_STATUSES_SELECTABLE as unknown as [ProspectStatus, ...ProspectStatus[]]).default("NOVA_OPORTUNIDADE"),
   prioridade: z.enum(PRIORITIES).default("MEDIA"),
 
   tagIds: z.array(z.string().uuid()).default([]),
@@ -218,6 +227,12 @@ export interface PropertyDto {
   prioridade: Priority;
   createdByUserId: string | null;
   corretorResponsavelId: string | null;
+  /** Preenchidos quando status = AQUISICAO_CANCELADA. */
+  canceladoEm: string | null;
+  motivoCancelamento: string | null;
+  canceladoPor: { id: string; name: string } | null;
+  /** Calculado na listagem e no detalhe: há lançamento realizado (bloqueia a exclusão). */
+  hasRealizedTransactions?: boolean;
   photos: PropertyPhotoDto[];
   documents: PropertyDocumentDto[];
   tags: Array<{ tag: TagDto }>;
@@ -254,3 +269,45 @@ export const confirmDocumentUploadSchema = z.object({
   previousDocumentId: z.string().uuid().optional(),
 });
 export type ConfirmDocumentUploadInput = z.infer<typeof confirmDocumentUploadSchema>;
+
+// ---------- Cancelamento de aquisição ----------
+
+export const cancelAcquisitionSchema = z.object({
+  /** Obrigatório (C2). */
+  motivo: z.string().trim().min(3, "Informe o motivo do cancelamento"),
+  /** Data do cancelamento (C2). */
+  data: z.string().datetime(),
+  /** Devolução total ou parcial, registrada como receita de reembolso (C7). */
+  reembolso: z
+    .object({
+      valor: money,
+      data: z.string().datetime(),
+      status: z.enum(TRANSACTION_STATUSES_EDITABLE).default("REALIZADO"),
+      origemTipo: z.enum(TRANSACTION_ORIGEM_TIPOS).nullable().optional(),
+      investidorId: z.string().uuid().nullable().optional(),
+    })
+    .superRefine((value, ctx) => {
+      if (!(Number(value.valor) > 0)) {
+        ctx.addIssue({ code: "custom", path: ["valor"], message: "O valor do reembolso deve ser maior que zero" });
+      }
+      refineOrigem(value, ctx);
+    })
+    .optional(),
+});
+export type CancelAcquisitionInput = z.infer<typeof cancelAcquisitionSchema>;
+
+/** Prévia do que o cancelamento fará, para o diálogo de confirmação. */
+export interface CancelImpactDto {
+  previstosCount: number;
+  previstosTotal: string;
+  realizadoReceitas: string;
+  realizadoDespesas: string;
+  /** Receitas realizadas − despesas realizadas (negativo = perda). */
+  resultadoRealizado: string;
+}
+
+export interface CancelAcquisitionResultDto {
+  property: PropertyDto;
+  canceledTransactions: number;
+  reimbursementTransactionId: string | null;
+}

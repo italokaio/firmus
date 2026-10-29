@@ -16,11 +16,14 @@ export const FINANCE_CATEGORY_TYPE_LABELS: Record<FinanceCategoryType, string> =
   DESPESA: "Despesa",
 };
 
-export const TRANSACTION_STATUSES = ["PREVISTO", "REALIZADO"] as const;
+export const TRANSACTION_STATUSES = ["PREVISTO", "REALIZADO", "CANCELADO"] as const;
+/** Status que o usuário pode definir à mão. CANCELADO só é atribuído pelo cancelamento da aquisição. */
+export const TRANSACTION_STATUSES_EDITABLE = ["PREVISTO", "REALIZADO"] as const;
 export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
 export const TRANSACTION_STATUS_LABELS: Record<TransactionStatus, string> = {
   PREVISTO: "Previsto",
   REALIZADO: "Realizado",
+  CANCELADO: "Cancelado",
 };
 
 /** "Pago por": de quem saiu o dinheiro do lançamento. `EMPRESA` é a opção única "Caixa da empresa". */
@@ -29,7 +32,7 @@ export type TransactionOrigemTipo = (typeof TRANSACTION_ORIGEM_TIPOS)[number];
 export const EMPRESA_ORIGEM_LABEL = "Caixa da empresa";
 export const ORIGEM_NAO_INFORMADA_LABEL = "Não informado";
 
-const money = z
+export const money = z
   .union([z.string(), z.number()])
   .transform((value) => String(value))
   .refine((value) => /^\d+(\.\d{1,2})?$/.test(value), "Informe um valor numérico válido");
@@ -65,7 +68,7 @@ const origemFields = {
 };
 
 /** INVESTIDOR exige investidorId; EMPRESA (ou sem origem) não pode trazer investidorId. */
-function refineOrigem(
+export function refineOrigem(
   value: { origemTipo?: TransactionOrigemTipo | null; investidorId?: string | null },
   ctx: z.RefinementCtx,
 ) {
@@ -87,7 +90,7 @@ export const createTransactionSchema = z
     amount: money,
     date: z.string().datetime(),
     description: z.string().optional(),
-    status: z.enum(TRANSACTION_STATUSES).default("PREVISTO"),
+    status: z.enum(TRANSACTION_STATUSES_EDITABLE).default("PREVISTO"),
     ...origemFields,
   })
   .superRefine(refineOrigem);
@@ -99,7 +102,7 @@ export const updateTransactionSchema = z
     amount: money.optional(),
     date: z.string().datetime().optional(),
     description: z.string().optional(),
-    status: z.enum(TRANSACTION_STATUSES).optional(),
+    status: z.enum(TRANSACTION_STATUSES_EDITABLE).optional(),
     conciliado: z.boolean().optional(),
     ...origemFields,
   })
