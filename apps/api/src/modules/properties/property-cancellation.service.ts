@@ -1,11 +1,16 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { CancelAcquisitionInput, CancelAcquisitionResultDto, CancelImpactDto } from "@leilao-erp/types";
+import {
+  REIMBURSEMENT_CATEGORY_NAME,
+  type CancelAcquisitionInput,
+  type CancelAcquisitionResultDto,
+  type CancelImpactDto,
+} from "@leilao-erp/types";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { PropertiesService, type PropertyRowScope } from "./properties.service";
 
-export const REIMBURSEMENT_CATEGORY_NAME = "Reembolso de aquisição";
+export { REIMBURSEMENT_CATEGORY_NAME };
 export const ALREADY_CANCELLED_MESSAGE = "A aquisição deste imóvel já foi cancelada.";
 export const ONLY_ACQUIRED_MESSAGE =
   "Só é possível cancelar a aquisição de imóveis adquiridos. Para um imóvel ainda em análise, use o status 'Reprovada'.";

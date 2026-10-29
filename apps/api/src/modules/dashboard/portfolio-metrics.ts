@@ -220,7 +220,7 @@ export function computePortfolio(
         custoIncorrido: money(t.despesaRealizada),
         avaliacao: aval ? money(aval) : null,
         resultadoProjetado: resultado ? money(resultado) : null,
-        margemPercentual: resultado && aval ? marginPercent(resultado, aval)?.toFixed(2) ?? null : null,
+        margemPercentual: resultado && aval ? marginPercent(resultado, aval)?.toFixed(4) ?? null : null,
         semAvaliacao: !withAval,
       };
     })
@@ -250,8 +250,8 @@ export function computePortfolio(
       custoIncorrido: money(custoIncorrido),
       custosAteVenda: money(custosAteVenda),
       resultadoProjetado: money(resultadoProjetado),
-      margemPercentual: margem ? margem.toFixed(2) : null,
-      roiPercentual: roi ? roi.toFixed(2) : null,
+      margemPercentual: margem ? margem.toFixed(4) : null,
+      roiPercentual: roi ? roi.toFixed(4) : null,
       imoveisNaProjecao: naProjecao.length,
       imoveisSemAvaliacao: adquiridos.length - naProjecao.length,
     },

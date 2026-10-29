@@ -9,11 +9,13 @@ interface KpiCardProps {
   icon?: LucideIcon;
   /** Card de destaque: fundo petróleo, borda ciano, texto branco (uso: o KPI principal da tela). */
   highlight?: boolean;
+  /** Cor do valor (ex.: "text-forecast-text" para valores previstos, "text-negative" para perdas). */
+  valueClassName?: string;
   className?: string;
 }
 
 /** Indicador: rótulo, valor e subtítulo. A variante `highlight` é o único card sólido da marca. */
-export function KpiCard({ label, value, subtitle, icon: Icon, highlight = false, className }: KpiCardProps) {
+export function KpiCard({ label, value, subtitle, icon: Icon, highlight = false, valueClassName, className }: KpiCardProps) {
   return (
     <Card
       className={cn(
@@ -24,7 +26,7 @@ export function KpiCard({ label, value, subtitle, icon: Icon, highlight = false,
       <CardContent className="flex items-start justify-between gap-4 p-5">
         <div className="flex min-w-0 flex-col gap-1">
           <span className={cn("text-sm", highlight ? "text-brand-white/80" : "text-muted-foreground")}>{label}</span>
-          <span className="truncate text-2xl font-semibold tracking-tight">{value}</span>
+          <span className={cn("truncate text-2xl font-semibold tracking-tight", valueClassName)}>{value}</span>
           {subtitle && (
             <span className={cn("text-xs", highlight ? "text-brand-white/80" : "text-muted-foreground")}>
               {subtitle}

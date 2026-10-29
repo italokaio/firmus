@@ -30,6 +30,8 @@ export const TRANSACTION_STATUS_LABELS: Record<TransactionStatus, string> = {
 export const TRANSACTION_ORIGEM_TIPOS = ["INVESTIDOR", "EMPRESA"] as const;
 export type TransactionOrigemTipo = (typeof TRANSACTION_ORIGEM_TIPOS)[number];
 export const EMPRESA_ORIGEM_LABEL = "Caixa da empresa";
+/** Categoria de receita criada no cancelamento da aquisição quando há devolução. */
+export const REIMBURSEMENT_CATEGORY_NAME = "Reembolso de aquisição";
 export const ORIGEM_NAO_INFORMADA_LABEL = "Não informado";
 
 export const money = z

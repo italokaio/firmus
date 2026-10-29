@@ -91,11 +91,12 @@ describe("computePortfolio — dados reais da Firmus", () => {
       custoIncorrido: "179060.76",
       custosAteVenda: "0.00",
       resultadoProjetado: "193939.24",
-      margemPercentual: "51.99",
-      roiPercentual: "108.31",
       imoveisNaProjecao: 3,
       imoveisSemAvaliacao: 0,
     });
+    // Percentuais saem com 4 casas e são arredondados uma só vez, na tela: 52,0% e 108,3%.
+    expect(Number(dto.carteira.margemPercentual).toFixed(1)).toBe("52.0");
+    expect(Number(dto.carteira.roiPercentual).toFixed(1)).toBe("108.3");
   });
 
   it("contagens: o card não confunde mais cadastrados com adquiridos", () => {

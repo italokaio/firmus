@@ -2,10 +2,12 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post
 import {
   PERMISSIONS,
   createTransactionSchema,
+  statementQuerySchema,
   transactionFilterSchema,
   updateTransactionSchema,
   type AuthenticatedUser,
   type CreateTransactionInput,
+  type StatementQueryInput,
   type TransactionFilterInput,
   type UpdateTransactionInput,
 } from "@leilao-erp/types";
@@ -13,10 +15,14 @@ import { RequirePermission } from "../../common/decorators/require-permission.de
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { FinanceService } from "./finance.service";
+import { PropertyStatementService } from "./property-statement.service";
 
 @Controller("properties/:propertyId/finance")
 export class PropertyFinanceController {
-  constructor(private readonly financeService: FinanceService) {}
+  constructor(
+    private readonly financeService: FinanceService,
+    private readonly statementService: PropertyStatementService,
+  ) {}
 
   @Get("account")
   @RequirePermission(PERMISSIONS.FINANCE_VIEW)
@@ -76,6 +82,17 @@ export class PropertyFinanceController {
     @Param("txId") txId: string,
   ): Promise<void> {
     await this.financeService.deleteTransactionByProperty(user.companyId, propertyId, txId);
+  }
+
+  /** DRE detalhada do imóvel: cards, composição do custo, origem do capital, lançamentos por categoria e fluxo. */
+  @Get("statement")
+  @RequirePermission(PERMISSIONS.FINANCE_VIEW)
+  getStatement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("propertyId") propertyId: string,
+    @Query(new ZodValidationPipe(statementQuerySchema)) query: StatementQueryInput,
+  ) {
+    return this.statementService.getStatement(user.companyId, propertyId, query.status);
   }
 
   @Get("dre")

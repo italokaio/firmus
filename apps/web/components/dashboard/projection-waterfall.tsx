@@ -1,7 +1,6 @@
 "use client";
 
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { PortfolioDashboardDto } from "@leilao-erp/types";
 import { formatCurrency } from "@/lib/format";
 
 const compact = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
@@ -10,7 +9,11 @@ const compact = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFra
  * Cascata da projeção: Avaliação Caixa − Custo incorrido − Custos até a venda = Resultado projetado.
  * Cada barra "flutua" sobre uma base transparente; realizado em ciano/petróleo, previsto em âmbar.
  */
-export function ProjectionWaterfall({ carteira }: { carteira: PortfolioDashboardDto["carteira"] }) {
+export function ProjectionWaterfall({
+  carteira,
+}: {
+  carteira: { avaliacao: string; custoIncorrido: string; custosAteVenda: string; resultadoProjetado: string };
+}) {
   const avaliacao = Number(carteira.avaliacao);
   const custo = Number(carteira.custoIncorrido);
   const previsto = Number(carteira.custosAteVenda);

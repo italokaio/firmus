@@ -110,14 +110,20 @@ function originColor(origin: OriginTotalDto, index: number): string {
 }
 
 /** De quem veio o capital: despesas realizadas dos adquiridos por "Pago por". */
-export function CapitalOriginCard({ origins }: { origins: OriginTotalDto[] }) {
+export function CapitalOriginCard({
+  origins,
+  description = "Quanto saiu de cada investidor e da empresa nas despesas realizadas dos adquiridos.",
+}: {
+  origins: OriginTotalDto[];
+  description?: string;
+}) {
   const total = origins.reduce((sum, o) => sum + Number(o.total), 0);
   const naoInformado = origins.find((o) => o.key === "NAO_INFORMADO");
   return (
     <Card>
       <CardHeader>
         <CardTitle>Origem do capital</CardTitle>
-        <CardDescription>Quanto saiu de cada investidor e da empresa nas despesas realizadas dos adquiridos.</CardDescription>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {origins.length === 0 || total === 0 ? (

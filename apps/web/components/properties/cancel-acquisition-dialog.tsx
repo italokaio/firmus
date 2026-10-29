@@ -83,6 +83,8 @@ export function CancelAcquisitionDialog({
           ["finance-account", property.id],
           ["finance-dre", property.id],
           ["finance-cashflow", property.id],
+          ["property-statement", property.id],
+          ["dashboard-portfolio"],
           ["finance-categories"],
           ["dashboard-summary"],
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),

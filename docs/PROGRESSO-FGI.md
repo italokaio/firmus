@@ -8,7 +8,7 @@
 | 2 | Cancelamento de aquisição | **Concluída e publicada em 29/10/2026** (migração `add_aquisicao_cancelada` aplicada em produção) |
 | 3 | Identidade visual Firmus | **Publicada em 29/10/2026** (aguardando conferência visual do usuário) |
 | 4 | Novo dashboard | **Publicada em 29/10/2026** (migração `add_etapa_pos_aquisicao` aplicada; aguardando conferência visual) |
-| 5 | DRE do imóvel detalhada | **Levantamento feito — aguardando OK do plano** |
+| 5 | DRE do imóvel detalhada | **Implementada e commitada — aguardando OK final** (NÃO publicada; sem migração) |
 | 6 | Relatórios com a marca | Pendente |
 
 ## Decisões e respostas do usuário
@@ -135,4 +135,14 @@ Backup `firmus-prod-20261029-0450-pre-fase4.json`; `migrate deploy` aplicou 2026
 - Categorias são nomes livres por empresa: "Aquisição de imóvel" e "Compra imóvel", "Reforma" e "Reforma de imóvel", "Impostos", "Documentação de imóvel". Não há campo que diga qual é "a categoria Aquisição/Reforma".
 - Dados de conferência confirmados no backup — F 201: Aquisição 38.000 (66,4%), Impostos 10.560 (18,4%), Reforma 8.100 (14,1%), Documentação 600 (1,0%); meses fev 45.200, mar 600, jun 6.650, jul 1.450, out 3.360 = 57.260. H 02: 57.800 em out/2026 (1 lançamento).
 - Reaproveitável: `sumByOrigin`, `projectedResult/marginPercent/roiPercent` (portfolio-metrics), edição/histórico de lançamentos (hoje dentro do transactions-panel), `ProjectionWaterfall`, export Excel (`/finance/transactions/export?propertyId`), relatório FINANCIAL_DRE (PDF simples; layout de marca é Fase 6).
+
+
+## Fase 5 — o que foi feito
+- **API**: `GET /properties/:id/finance/statement?status=TODOS|REALIZADO|PREVISTO|CANCELADO` (`FINANCE_VIEW`). Cálculos em `property-statement.ts` (funções puras e testadas, reaproveitando `projectedResult/marginPercent/roiPercent` do dashboard e `sumByOrigin`): cards, composição do custo, capital acumulado, origem do capital, lançamentos agrupados por categoria (subtotal e % no filtro; cancelados só somam no filtro Cancelados), orçado x realizado de reforma, fluxo mensal com marca de mês futuro, projeção de venda. O `/dre` antigo continua (a faixa de aquisição cancelada ainda o usa).
+- **Rótulos por modo**: ADQUIRIDO = Custo de aquisição · Capital investido · Avaliação Caixa · Custos até a venda (âmbar) · Resultado projetado (destaque, margem e ROI); VENDIDO (status Vendida ou etapa Vendido) = Capital investido · Receitas · Resultado realizado (margem sobre as receitas); CANCELADO = Capital investido · Reembolsos · Resultado realizado (perda), sem projeção; antes da aquisição = Capital investido e Avaliação. "Lucro líquido" não aparece mais.
+- **Categorias por nome** (sem mudar o banco, sem acento/caixa): Aquisição = despesa com "aquisi" ou "compra"; Reforma = despesa com "reforma"; Reembolso = categoria "Reembolso de aquisição". Orçado x realizado: orçado = soma dos valores previstos das tarefas do módulo Reforma; realizado = todas as despesas realizadas de categorias de reforma; aparece só no maior grupo de reforma e só se houver orçamento (hoje nenhum).
+- **Tela** (aba Financeiro): cabeçalho (data da aquisição, etapa, dias em carteira, saldo da conta, Gerar PDF = relatório FINANCIAL_DRE atual, Exportar Excel = extrato), cards, composição (barra 100% + lista), capital acumulado (barras + linha), origem do capital, despesas por categoria expansíveis com filtro de status e Editar/Ver histórico por lançamento, receitas por categoria (se houver), fluxo mensal (meses futuros em âmbar), projeção de venda (cascata). O painel de lançamentos (novo lançamento + lista completa) ficou embaixo. Diálogos de edição/histórico foram extraídos para `transaction-dialogs.tsx`.
+- **Correção de arredondamento**: percentuais (margem, ROI, composição, desvio) agora saem da API com 4 casas e são arredondados uma só vez na tela (antes 14,146% virava "14.15" e aparecia 14,2%). Vale também para o dashboard.
+- **Testes**: 119 na API (23 novos). Conferido com dados reais (backup): F 201 = R$ 57.260,00; composição 66,4% · 18,4% · 14,1% · 1,0%; meses fev 45.200 · mar 600 · jun 6.650 · jul 1.450 · out 3.360; H 02 = R$ 57.800,00 em 10/2026. Build de produção OK.
+- **Não feito (fora de escopo)**: fornecedor/comprovante (não existem no lançamento); layout de marca do PDF e DRE em Excel multi-abas (Fase 6).
 
