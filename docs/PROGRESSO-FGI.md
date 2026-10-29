@@ -7,8 +7,8 @@
 | 1 | Lançamentos: edição, histórico, "Pago por", Excel | **Concluída e publicada em 28/10/2026** (migrações aplicadas em produção, OK do usuário) |
 | 2 | Cancelamento de aquisição | **Concluída e publicada em 29/10/2026** (migração `add_aquisicao_cancelada` aplicada em produção) |
 | 3 | Identidade visual Firmus | **Publicada em 29/10/2026** (aguardando conferência visual do usuário) |
-| 4 | Novo dashboard | **Implementada e commitada — aguardando OK final** (NÃO publicada; migração pendente em produção) |
-| 5 | DRE do imóvel detalhada | Pendente |
+| 4 | Novo dashboard | **Publicada em 29/10/2026** (migração `add_etapa_pos_aquisicao` aplicada; aguardando conferência visual) |
+| 5 | DRE do imóvel detalhada | **Levantamento feito — aguardando OK do plano** |
 | 6 | Relatórios com a marca | Pendente |
 
 ## Decisões e respostas do usuário
@@ -121,4 +121,18 @@ Backup `C:devackups-firmusirmus-prod-20261029-0419-pre-fase2-3.json`; `prisma 
 - **Frontend**: seletor de mês, "Gerar relatório" (Resumo do portfólio em PDF), 4 KPIs (Saldo consolidado saiu; Resultado projetado em destaque), funil, cascata da projeção, caixa, origem do capital, tabela de adquiridos ordenável (rolagem horizontal no celular) e alertas. Removidos: usuários ativos, papéis, gráfico por prioridade (virou coluna), "Próximos módulos". Menu agrupado em Operação / Financeiro / Administração. Etapa pós-aquisição editável no formulário do imóvel (quando Adquirida).
 - **Alertas** (só com dado real): prazos/audiências vencidos e próximos 7 dias, tarefas de reforma atrasadas, reforma acima do orçamento, parcelas de venda vencidas, previstos com data vencida, processos aguardando pagamento, adquiridos sem avaliação/sem etapa, despesas sem "Pago por".
 - **Testes**: 96 na API (21 novos do dashboard). Conferência com dados reais da Firmus (a partir do backup): capital R$ 179.060,76; avaliação R$ 373.000,00; resultado R$ 193.939,24; margem 51,99%; ROI 108,31%; F 201 custo R$ 57.260,00. Build de produção OK.
+
+
+## Publicação da Fase 4 (29/10/2026)
+Backup `firmus-prod-20261029-0450-pre-fase4.json`; `migrate deploy` aplicou 20261029180000_add_etapa_pos_aquisicao (16 migrações ok, 32 lançamentos intactos); push `6e8f82d`; API SUCCESS.
+
+## Fase 5 — Levantamento (resumo)
+- A "DRE" é a aba **Financeiro** do imóvel (`finance-tab.tsx`): cards de saldo/receitas/despesas, bloco "DRE (receitas x despesas realizadas)" com "Lucro líquido" e "Margem", fluxo mensal e o painel de lançamentos. Não existe página própria.
+- "Margem" fica vazia porque `getDre` calcula lucro ÷ **receitas** (null sem receita) — todo imóvel não vendido. "Lucro líquido" negativo = só despesas realizadas.
+- Fluxo mensal: o previsto aparece zerado porque **não há nenhum lançamento previsto** em produção (não é bug de cálculo). Cancelados já ficam fora (Fase 2).
+- Lançamento **não tem fornecedor nem comprovante** — colunas só com o que existe (Data, Descrição, Pago por, Status, Conciliado, Valor).
+- Orçamento de reforma: `RenovationTask.valorPrevisto/valorRealizado` existe (módulo Reforma, manual, hoje tudo 0), sem vínculo com categorias financeiras.
+- Categorias são nomes livres por empresa: "Aquisição de imóvel" e "Compra imóvel", "Reforma" e "Reforma de imóvel", "Impostos", "Documentação de imóvel". Não há campo que diga qual é "a categoria Aquisição/Reforma".
+- Dados de conferência confirmados no backup — F 201: Aquisição 38.000 (66,4%), Impostos 10.560 (18,4%), Reforma 8.100 (14,1%), Documentação 600 (1,0%); meses fev 45.200, mar 600, jun 6.650, jul 1.450, out 3.360 = 57.260. H 02: 57.800 em out/2026 (1 lançamento).
+- Reaproveitável: `sumByOrigin`, `projectedResult/marginPercent/roiPercent` (portfolio-metrics), edição/histórico de lançamentos (hoje dentro do transactions-panel), `ProjectionWaterfall`, export Excel (`/finance/transactions/export?propertyId`), relatório FINANCIAL_DRE (PDF simples; layout de marca é Fase 6).
 
