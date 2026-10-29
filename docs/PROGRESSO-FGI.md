@@ -4,8 +4,8 @@
 
 | Fase | Entrega | Status |
 |---|---|---|
-| 1 | Lançamentos: edição, histórico, "Pago por", Excel | **Implementada e commitada — aguardando OK final** (não publicada) |
-| 2 | Cancelamento de aquisição | Pendente |
+| 1 | Lançamentos: edição, histórico, "Pago por", Excel | **Concluída e publicada em 28/10/2026** (migrações aplicadas em produção, OK do usuário) |
+| 2 | Cancelamento de aquisição | **Levantamento feito — aguardando OK do plano** |
 | 3 | Identidade visual Firmus | Pendente |
 | 4 | Novo dashboard | Pendente |
 | 5 | DRE do imóvel detalhada | Pendente |
@@ -41,3 +41,11 @@
 1. Trocar a categoria de um lançamento só é permitido para categorias do mesmo tipo (despesa→despesa).
 2. Em lançamento conciliado, não dá para desfazer a conciliação e editar valor/data/status na mesma ação (desfaz primeiro, depois edita).
 3. Excel: o filtro de origem aceita `EMPRESA`, `NAO_INFORMADO` ou id de investidor; a tela de exportação aplica só o filtro do imóvel (aba do imóvel) ou da conta (Caixa).
+
+## Fase 2 — Levantamento (resumo)
+- Status do imóvel: enum `ProspectStatus` (NOVA_OPORTUNIDADE, EM_ANALISE, APROVADA, REPROVADA, EM_DUE_DILIGENCE, ADQUIRIDA, VENDIDA, DESCARTADA). Produção: 3 EM_ANALISE, 1 NOVA_OPORTUNIDADE, 4 ADQUIRIDA, 1 REPROVADA.
+- `TransactionStatus` só tem PREVISTO e REALIZADO — `CANCELADO` não existe.
+- Exclusão de imóvel (`PropertiesService.delete`) apaga em cascata conta de caixa e TODOS os lançamentos (onDelete: Cascade). Confirma o risco que motivou a fase.
+- `getCashflow` e `getCompanyCashflow` tratam "não PREVISTO" como realizado: um `CANCELADO` seria somado como realizado se nada for feito. Saldo, DRE e resumo já filtram `REALIZADO` explicitamente (seguros).
+- Categorias são por empresa (`@@unique([companyId, name])`) e não existe categoria de reembolso em produção.
+- `PropertiesService.update` aceita `status` livre; precisa bloquear AQUISICAO_CANCELADA via PATCH comum e qualquer mudança a partir dela.
