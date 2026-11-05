@@ -353,6 +353,24 @@ describe("buildAlerts", () => {
     previstosVencidos: 0,
   };
 
+  it("tarefa de reforma na etapa Finalizado não é atrasada, mesmo com 0% concluído e prazo vencido", () => {
+    const overdue = new Date("2026-07-31T00:00:00.000Z");
+    const task = (stage: string, percentualConcluido: number) => ({
+      propertyId: "A",
+      dueDate: overdue,
+      percentualConcluido,
+      stage,
+      valorPrevisto: "0",
+      valorRealizado: "0",
+    });
+    const ids = (tasks: ReturnType<typeof task>[]) =>
+      buildAlerts({ ...base, renovationTasks: tasks }).map((a) => a.id);
+
+    expect(ids([task("FINALIZADO", 0)])).not.toContain("renovation-late");
+    expect(ids([task("PINTURA", 0)])).toContain("renovation-late"); // atrasada de verdade
+    expect(ids([task("PINTURA", 100)])).not.toContain("renovation-late"); // 100% também encerra
+  });
+
   it("sem dado real, não há alerta", () => {
     expect(buildAlerts(base)).toEqual([]);
   });

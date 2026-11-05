@@ -65,6 +65,7 @@ export class DashboardService {
             propertyId: true,
             dueDate: true,
             percentualConcluido: true,
+            stage: true,
             valorPrevisto: true,
             valorRealizado: true,
           },

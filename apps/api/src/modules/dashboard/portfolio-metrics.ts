@@ -307,6 +307,8 @@ export interface AlertInputs {
     propertyId: string;
     dueDate: Date | null;
     percentualConcluido: number;
+    /** Etapa da tarefa; "FINALIZADO" conta como concluída mesmo com % concluído em 0. */
+    stage?: string;
     valorPrevisto: Prisma.Decimal | string;
     valorRealizado: Prisma.Decimal | string;
   }>;
@@ -333,7 +335,10 @@ export function buildAlerts(input: AlertInputs): PortfolioAlertDto[] {
   const soonEvents = input.legalEventsPendentes.filter((e) => e.dueDate >= now && e.dueDate <= weekAhead);
   add("legal-soon", "forecast", soonEvents.length, `${plural(soonEvents.length, "prazo/audiência jurídica nos próximos 7 dias", "prazos/audiências jurídicas nos próximos 7 dias")}`, soonEvents.map((e) => e.propertyId));
 
-  const lateTasks = input.renovationTasks.filter((t) => t.dueDate && t.dueDate < now && t.percentualConcluido < 100);
+  // Tarefa na etapa Finalizado está concluída, mesmo que o % concluído não tenha sido preenchido.
+  const lateTasks = input.renovationTasks.filter(
+    (t) => t.dueDate && t.dueDate < now && t.percentualConcluido < 100 && t.stage !== "FINALIZADO",
+  );
   add("renovation-late", "negative", lateTasks.length, `${plural(lateTasks.length, "tarefa de reforma atrasada", "tarefas de reforma atrasadas")}`, lateTasks.map((t) => t.propertyId));
 
   const overBudgetProperties = unique(
