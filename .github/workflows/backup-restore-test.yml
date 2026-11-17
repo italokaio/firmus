@@ -1,0 +1,44 @@
+name: Teste mensal de restauração do backup
+
+# Um backup que ninguém restaurou é só uma esperança. Todo mês este fluxo pega o backup mais recente,
+# descriptografa, restaura em um Postgres vazio e confere as contagens. Se falhar, o GitHub envia e-mail.
+
+on:
+  schedule:
+    - cron: "40 7 2 * *" # dia 2 de cada mês, 07:40 UTC (04:40 em Brasília)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  R2_BUCKET: firmus-backups
+
+jobs:
+  restaurar:
+    name: Restaurar em banco vazio
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: teste
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-postgres-client
+      - name: Restaurar e conferir
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:teste@localhost:5432/postgres
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: bash infra/backup/restore-test.sh

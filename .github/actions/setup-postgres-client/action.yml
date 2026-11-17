@@ -1,0 +1,17 @@
+name: Instalar cliente PostgreSQL 18
+description: pg_dump/pg_restore/psql na mesma versão do banco de produção (Postgres 18). O cliente precisa ser igual ou mais novo que o servidor.
+
+runs:
+  using: composite
+  steps:
+    - name: Instalar postgresql-client-18 (repositório oficial PGDG)
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo install -d /usr/share/postgresql-common/pgdg
+        sudo curl -sSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        . /etc/os-release
+        echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq postgresql-client-18
+        pg_dump --version

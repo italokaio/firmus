@@ -1,0 +1,3 @@
+# Scripts de shell e arquivos do GitHub Actions precisam de quebra de linha LF mesmo no Windows
+*.sh text eol=lf
+.github/** text eol=lf

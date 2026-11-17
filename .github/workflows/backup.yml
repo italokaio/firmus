@@ -1,0 +1,74 @@
+name: Backup diário (banco e arquivos)
+
+# Todo dia, às 03:17 de Brasília: copia o banco (criptografado) e, aos domingos, os arquivos enviados
+# para um bucket PRIVADO do Cloudflare R2, fora do Railway. Detalhes e como restaurar: infra/backup/README.md
+#
+# Se este fluxo falhar, o GitHub envia um e-mail. O repositório é público: os logs também são,
+# então os scripts nunca imprimem conexões, senhas ou dados.
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # 06:17 UTC = 03:17 em Brasília
+  workflow_dispatch:
+    inputs:
+      incluir_arquivos:
+        description: "Copiar também os arquivos enviados (PDFs e fotos)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: write # só para manter o agendamento ativo (último passo)
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+env:
+  R2_BUCKET: firmus-backups
+  R2_SOURCE_BUCKET: firmus-prod
+
+jobs:
+  banco:
+    name: Backup do banco
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-postgres-client
+      - name: Gerar, validar, criptografar e enviar
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: bash infra/backup/backup-db.sh
+      - name: Manter o agendamento ativo
+        # Em repositório público o GitHub desliga agendamentos após 60 dias sem atividade.
+        # Reativar o fluxo a cada execução zera essa contagem.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow enable backup.yml --repo "$GITHUB_REPOSITORY" || echo "Não foi possível reativar (sem problema)."
+
+  arquivos:
+    name: Cópia dos arquivos enviados
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copiar PDFs e fotos (domingos ou execução manual)
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          EVENTO: ${{ github.event_name }}
+          INCLUIR: ${{ inputs.incluir_arquivos }}
+        run: |
+          if [ "$EVENTO" = "workflow_dispatch" ] && [ "$INCLUIR" != "true" ]; then
+            echo "Execução manual sem a cópia de arquivos."; exit 0
+          fi
+          if [ "$EVENTO" = "schedule" ] && [ "$(date -u +%u)" != "7" ]; then
+            echo "A cópia de arquivos roda só aos domingos."; exit 0
+          fi
+          bash infra/backup/sync-files.sh
