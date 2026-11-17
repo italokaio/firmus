@@ -7,6 +7,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/lib.sh"
 : "${DATABASE_URL:?defina DATABASE_URL}"
 : "${BACKUP_PASSPHRASE:?defina BACKUP_PASSPHRASE}"
+# Ao colar o segredo, quebras de linha e espaços podem ir junto: uma URL de conexão não tem nenhum.
+DATABASE_URL="$(printf '%s' "$DATABASE_URL" | tr -d '[:space:]')"
 
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
 YEAR="$(date -u +%Y)"

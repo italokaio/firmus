@@ -10,6 +10,12 @@ set -euo pipefail
 : "${R2_SECRET_ACCESS_KEY:?defina R2_SECRET_ACCESS_KEY}"
 : "${R2_BUCKET:?defina R2_BUCKET (bucket de backups)}"
 
+# Remove quebra de linha/CR que costuma ir junto ao colar o segredo (a senha em si não os contém).
+if [ -n "${BACKUP_PASSPHRASE:-}" ]; then BACKUP_PASSPHRASE="$(printf '%s' "$BACKUP_PASSPHRASE" | tr -d '\r\n')"; export BACKUP_PASSPHRASE; fi
+R2_ACCOUNT_ID="$(printf '%s' "$R2_ACCOUNT_ID" | tr -d '[:space:]')"
+R2_ACCESS_KEY_ID="$(printf '%s' "$R2_ACCESS_KEY_ID" | tr -d '[:space:]')"
+R2_SECRET_ACCESS_KEY="$(printf '%s' "$R2_SECRET_ACCESS_KEY" | tr -d '[:space:]')"
+
 export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
 export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
 export AWS_DEFAULT_REGION="auto"
