@@ -14,4 +14,8 @@ runs:
         echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
         sudo apt-get update -qq
         sudo apt-get install -y -qq postgresql-client-18
+        # O runner já traz o cliente 16, que tem prioridade no PATH: coloca o 18 na frente.
+        echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+        export PATH="/usr/lib/postgresql/18/bin:$PATH"
         pg_dump --version
+        pg_dump --version | grep -q ' 18\.' || { echo "ERRO: pg_dump 18 não está ativo."; exit 1; }
