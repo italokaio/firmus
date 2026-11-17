@@ -282,6 +282,39 @@ export class PropertiesService {
     return document;
   }
 
+  /**
+   * Remove UMA versão do documento (só o registro; o arquivo continua no R2, protegido pelo backup).
+   * Se havia versões antes/depois, a cadeia é religada para não ficar quebrada.
+   */
+  async deleteDocument(companyId: string, propertyId: string, documentId: string, scope?: PropertyRowScope) {
+    await this.assertPropertyBelongsToCompany(companyId, propertyId, scope);
+    const document = await this.prisma.propertyDocument.findFirst({ where: { id: documentId, propertyId } });
+    if (!document) throw new NotFoundException("Documento não encontrado");
+
+    await this.prisma.$transaction(async (tx) => {
+      const next = await tx.propertyDocument.findFirst({
+        where: { previousVersionId: documentId },
+        select: { id: true },
+      });
+      // Solta a versão seguinte antes de apagar (previousVersionId é único) e religa à anterior.
+      if (next) await tx.propertyDocument.update({ where: { id: next.id }, data: { previousVersionId: null } });
+      await tx.propertyDocument.delete({ where: { id: documentId } });
+      if (next && document.previousVersionId) {
+        await tx.propertyDocument.update({
+          where: { id: next.id },
+          data: { previousVersionId: document.previousVersionId },
+        });
+      }
+    });
+
+    await this.auditService.log({
+      entityType: "PropertyDocument",
+      entityId: documentId,
+      action: "DELETE",
+      before: { propertyId, name: document.name, version: document.version },
+    });
+  }
+
   async getDocumentDownloadUrl(
     companyId: string,
     propertyId: string,

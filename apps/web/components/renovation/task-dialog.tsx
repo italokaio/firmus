@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckSquare, Loader2, Plus, Send, Square, Upload } from "lucide-react";
+import { CheckSquare, Loader2, Plus, Send, Square, Trash2, Upload } from "lucide-react";
 import {
   PRIORITIES,
   PRIORITY_LABELS,
@@ -110,6 +110,28 @@ export function TaskDialog({
       apiClient.post(`/properties/${propertyId}/renovation/tasks/${task!.id}/comments`, { body }),
     onSuccess: invalidate,
   });
+
+  const deleteTask = useMutation({
+    mutationFn: () => apiClient.delete(`/properties/${propertyId}/renovation/tasks/${task!.id}`),
+    onSuccess: async () => {
+      await invalidate();
+      onOpenChange(false);
+    },
+    onError: (error) => window.alert(error instanceof Error ? error.message : "Não foi possível excluir."),
+  });
+
+  function handleDeleteTask() {
+    if (!task) return;
+    const extras = [
+      task.checklist.length > 0 && `${task.checklist.length} item(ns) de checklist`,
+      task.comments.length > 0 && `${task.comments.length} comentário(s)`,
+      task.media.length > 0 && `${task.media.length} foto(s)/vídeo(s)`,
+    ].filter(Boolean);
+    const aviso = extras.length > 0 ? `\n\nTambém serão removidos: ${extras.join(", ")}.` : "";
+    if (confirm(`Excluir o cartão "${task.title}"?${aviso}\n\nEsta ação não pode ser desfeita.`)) {
+      deleteTask.mutate();
+    }
+  }
 
   const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
   const [newComment, setNewComment] = React.useState("");
@@ -414,10 +436,24 @@ export function TaskDialog({
                 )}
               </div>
 
-              <p className="text-xs text-muted-foreground">
-                Valor previsto: {formatCurrency(form.valorPrevisto)} · Valor realizado:{" "}
-                {formatCurrency(task!.valorRealizado)}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Valor previsto: {formatCurrency(form.valorPrevisto)} · Valor realizado:{" "}
+                  {formatCurrency(task!.valorRealizado)}
+                </p>
+                {canManage && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive"
+                    disabled={deleteTask.isPending}
+                    onClick={handleDeleteTask}
+                  >
+                    {deleteTask.isPending ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                    Excluir cartão
+                  </Button>
+                )}
+              </div>
             </>
           )}
         </div>

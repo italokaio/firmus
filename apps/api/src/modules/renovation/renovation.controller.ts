@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, UsePipes } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  UsePipes,
+} from "@nestjs/common";
 import {
   PERMISSIONS,
   confirmRenovationMediaSchema,
@@ -55,6 +66,17 @@ export class RenovationController {
     @Body() body: UpdateRenovationTaskInput,
   ) {
     return this.renovationService.updateTask(user.companyId, propertyId, taskId, body);
+  }
+
+  @Delete("tasks/:taskId")
+  @RequirePermission(PERMISSIONS.RENOVATION_MANAGE)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("propertyId") propertyId: string,
+    @Param("taskId") taskId: string,
+  ): Promise<void> {
+    await this.renovationService.deleteTask(user.companyId, propertyId, taskId);
   }
 
   @Patch("tasks/:taskId/move")

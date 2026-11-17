@@ -152,6 +152,17 @@ export class PropertiesController {
     return this.propertiesService.confirmDocument(user.companyId, id, body, rowScope(user));
   }
 
+  @Delete(":id/documents/:documentId")
+  @RequirePermission(PERMISSIONS.PROPERTIES_EDIT)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteDocument(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Param("documentId") documentId: string,
+  ): Promise<void> {
+    await this.propertiesService.deleteDocument(user.companyId, id, documentId, rowScope(user));
+  }
+
   @Get(":id/documents/:documentId/download")
   @RequirePermission(PERMISSIONS.PROPERTIES_VIEW)
   getDocumentDownloadUrl(

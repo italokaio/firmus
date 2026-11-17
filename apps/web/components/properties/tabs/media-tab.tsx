@@ -22,6 +22,22 @@ export function MediaTab({ property, canEdit }: { property: PropertyDto; canEdit
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["property", property.id] }),
   });
 
+  const deleteDocument = useMutation({
+    mutationFn: (documentId: string) => apiClient.delete(`/properties/${property.id}/documents/${documentId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["property", property.id] }),
+    onError: (error) => window.alert(error instanceof Error ? error.message : "Não foi possível excluir."),
+  });
+
+  function handleDeletePhoto(photoId: string) {
+    if (confirm("Excluir esta foto?")) deletePhoto.mutate(photoId);
+  }
+
+  function handleDeleteDocument(document: { id: string; name: string; version: number }) {
+    if (confirm(`Excluir o documento "${document.name}" (versão ${document.version})?`)) {
+      deleteDocument.mutate(document.id);
+    }
+  }
+
   async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -100,8 +116,9 @@ export function MediaTab({ property, canEdit }: { property: PropertyDto; canEdit
                   {canEdit && (
                     <button
                       type="button"
-                      onClick={() => deletePhoto.mutate(photo.id)}
-                      className="absolute right-1.5 top-1.5 rounded-md bg-black/60 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      aria-label="Excluir foto"
+                      onClick={() => handleDeletePhoto(photo.id)}
+                      className="absolute right-1.5 top-1.5 rounded-md bg-black/60 p-1.5 text-white transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                     >
                       <Trash2 className="size-3.5" />
                     </button>
@@ -147,9 +164,27 @@ export function MediaTab({ property, canEdit }: { property: PropertyDto; canEdit
                       </p>
                     </div>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => handleDownloadDocument(document.id)}>
-                    <Download />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Baixar documento"
+                      onClick={() => handleDownloadDocument(document.id)}
+                    >
+                      <Download />
+                    </Button>
+                    {canEdit && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label="Excluir documento"
+                        disabled={deleteDocument.isPending}
+                        onClick={() => handleDeleteDocument(document)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

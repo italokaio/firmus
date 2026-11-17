@@ -13,6 +13,9 @@ import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import { StorageService } from "../../infrastructure/storage/storage.service";
 import { AuditService } from "../audit/audit.service";
 
+export const TASK_WITH_REALIZED_VALUE_MESSAGE =
+  "Este cartão tem valor realizado. Zere o valor realizado antes de excluir, para o gasto não sumir do DRE do imóvel.";
+
 const taskInclude = {
   responsible: { select: { id: true, name: true } },
   checklist: { orderBy: { createdAt: "asc" as const } },
@@ -132,6 +135,35 @@ export class RenovationService {
     });
 
     return this.attachMediaUrl(updated);
+  }
+
+  /**
+   * Exclui o cartão (checklist, comentários, mídia e vínculos saem junto por cascata; os arquivos
+   * continuam no R2). Com valor realizado > 0 o gasto sumiria do DRE/dashboard: bloqueia.
+   */
+  async deleteTask(companyId: string, propertyId: string, taskId: string) {
+    const task = await this.findTaskOrThrow(companyId, propertyId, taskId);
+    if (Number(task.valorRealizado) > 0) throw new BadRequestException(TASK_WITH_REALIZED_VALUE_MESSAGE);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.renovationTask.delete({ where: { id: taskId } });
+      // Fecha o buraco na ordem da coluna.
+      const siblings = await tx.renovationTask.findMany({
+        where: { propertyId, stage: task.stage },
+        orderBy: { order: "asc" },
+        select: { id: true },
+      });
+      await Promise.all(
+        siblings.map((s, index) => tx.renovationTask.update({ where: { id: s.id }, data: { order: index } })),
+      );
+    });
+
+    await this.auditService.log({
+      entityType: "RenovationTask",
+      entityId: taskId,
+      action: "DELETE",
+      before: { propertyId, title: task.title, stage: task.stage, valorPrevisto: String(task.valorPrevisto) },
+    });
   }
 
   /** Move o cartão entre colunas (stage) e/ou reordena dentro da coluna, renumerando os vizinhos. */
